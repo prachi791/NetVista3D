@@ -60,9 +60,9 @@ The website presents the project overview, assumptions, network topology, simula
 
 The `website/` directory contains the website files and the copies of the report, CSV, and graph images used for online viewing.
 
-### Accessing the website
+## 🌐 Live Website
 
-**Live website:** Add the published website URL here after deployment.
+Visit the **[NetVista3D Website](https://prachi791.github.io/NetVista3D/)** to explore the project, results, graphs, and technical report.
 
 To test the website locally, open a terminal in the `website/` directory and run:
 
