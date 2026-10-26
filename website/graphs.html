@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetVista 3D | Generated Graphs</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 32px;
+            font-family: Arial, sans-serif;
+            background: #FAF8FF;
+            color: #35264F;
+        }
+
+        h1 {
+            color: #845EC2;
+            text-align: center;
+        }
+
+        p {
+            text-align: center;
+            color: #625778;
+        }
+
+        .graphs {
+            max-width: 1000px;
+            margin: 32px auto;
+            display: grid;
+            gap: 28px;
+        }
+
+        .graph {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 18px #845EC220;
+        }
+
+        img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        a {
+            display: inline-block;
+            margin-top: 12px;
+            color: #845EC2;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>NetVista 3D — Experimental Graphs</h1>
+    <p>Distance Vector vs Link State Routing</p>
+
+    <main class="graphs">
+        <section class="graph">
+            <h2>1. Message Overhead</h2>
+            <img src="assets/results/message_overhead.png" alt="Comparison of DV and LS message overhead">
+            <a href="assets/results/message_overhead.png" target="_blank" rel="noopener noreferrer">
+                Open full-size graph
+            </a>
+        </section>
+
+        <section class="graph">
+            <h2>2. Convergence Rounds</h2>
+            <img src="assets/results/convergence_rounds.png" alt="Comparison of DV and LS convergence rounds">
+            <a href="assets/results/convergence_rounds.png" target="_blank" rel="noopener noreferrer">
+                Open full-size graph
+            </a>
+        </section>
+    </main>
+</body>
+
+</html>

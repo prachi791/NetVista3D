@@ -1,0 +1,7 @@
+experiment,algorithm,rounds,message_count,message_type,distance_validation,next_hop_validation
+Baseline,DV,3,42,DV vector advertisement attempts,PASS,PASS
+Baseline,LS,3,50,LSA transmission attempts,PASS,PASS
+Fresh start after failure,DV,3,36,DV vector advertisement attempts,PASS,PASS
+Fresh start after failure,LS,3,40,LSA transmission attempts,PASS,PASS
+Recovery after failure,DV,3,36,DV vector advertisement attempts,PASS,PASS
+Recovery after failure,LS,3,16,LSA transmission attempts,PASS,PASS

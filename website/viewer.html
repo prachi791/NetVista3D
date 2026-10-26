@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NetVista 3D | Project Viewer</title>
+
+    <style>
+        :root {
+            --bg: #080D18;
+            --panel: #101827;
+            --border: #24364D;
+            --cyan: #20D9F5;
+            --text: #F4F7FF;
+            --muted: #9BAFCB;
+            --purple: #845EC2;
+            --pink: #FF6F91;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 32px 20px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+
+        header,
+        main {
+            width: min(1100px, 100%);
+            margin: auto;
+        }
+
+        header {
+            padding-bottom: 22px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand {
+            color: var(--cyan);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 20px 0 8px;
+            font-size: clamp(26px, 4vw, 38px);
+        }
+
+        #description {
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        main {
+            padding-top: 28px;
+        }
+
+        .panel {
+            margin-bottom: 24px;
+            padding: clamp(16px, 3vw, 28px);
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+        }
+
+        .panel h2 {
+            margin-top: 0;
+            font-size: 19px;
+        }
+
+        .graph-image {
+            display: block;
+            width: 100%;
+            height: auto;
+            background: #FAF8FF;
+            border-radius: 8px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            white-space: nowrap;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            padding: 13px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: #17263B;
+            color: var(--cyan);
+        }
+
+        tbody tr:nth-child(even) {
+            background: #131F31;
+        }
+
+        pre {
+            overflow: auto;
+            padding: 18px;
+            border-radius: 8px;
+            background: #080D18;
+            color: #D9E5F7;
+            line-height: 1.65;
+            font-size: 13px;
+            white-space: pre;
+        }
+
+        iframe,
+        video {
+            display: block;
+            width: 100%;
+            border: 0;
+            border-radius: 8px;
+            background: #080D18;
+        }
+
+        iframe.document {
+            height: min(78vh, 900px);
+        }
+
+        iframe.youtube {
+            aspect-ratio: 16 / 9;
+            height: auto;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 11px 16px;
+            border: 1px solid var(--cyan);
+            border-radius: 8px;
+            color: var(--cyan);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .button:hover {
+            background: #20D9F514;
+        }
+
+        .back {
+            display: inline-block;
+            margin-top: 8px;
+            color: var(--muted);
+            text-decoration: none;
+        }
+
+        .back:hover {
+            color: var(--cyan);
+        }
+
+        .status {
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .error {
+            color: #FF8FA3;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 22px 14px;
+            }
+
+            th,
+            td {
+                padding: 11px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="brand">◈ NetVista 3D / Project Evidence</div>
+        <h1 id="title">Project Viewer</h1>
+        <p id="description">
+            Experimental evidence for the Distance Vector vs Link State investigation.
+        </p>
+    </header>
+
+    <main>
+        <p id="status" class="status" role="status">Loading content...</p>
+
+        <section id="graphs" hidden>
+            <article class="panel">
+                <h2>01 / Message Overhead</h2>
+                <img class="graph-image" src="assets/results/message_overhead.png"
+                    alt="Distance Vector versus Link State message overhead comparison">
+                <div class="actions">
+                    <a class="button" href="assets/results/message_overhead.png" target="_blank"
+                        rel="noopener noreferrer">
+                        Open full-size graph ↗
+                    </a>
+                </div>
+            </article>
+
+            <article class="panel">
+                <h2>02 / Convergence Rounds</h2>
+                <img class="graph-image" src="assets/results/convergence_rounds.png"
+                    alt="Distance Vector versus Link State convergence rounds comparison">
+                <div class="actions">
+                    <a class="button" href="assets/results/convergence_rounds.png" target="_blank"
+                        rel="noopener noreferrer">
+                        Open full-size graph ↗
+                    </a>
+                </div>
+            </article>
+        </section>
+
+        <section id="csv" class="panel" hidden>
+            <h2>Recorded Experiment Data</h2>
+            <p class="status">
+                Values are read from the original CSV file. They are not recreated
+                or manually entered on this page.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead id="csv-head"></thead>
+                    <tbody id="csv-body"></tbody>
+                </table>
+            </div>
+
+            <div class="actions">
+                <a id="csv-original" class="button" target="_blank" rel="noopener noreferrer">Open original CSV ↗</a>
+                <a id="csv-download" class="button" download>Download CSV ↓</a>
+            </div>
+        </section>
+
+        <section id="pdf" class="panel" hidden>
+            <h2>Technical Document</h2>
+            <iframe class="document" id="pdf-frame" title="PDF document viewer"></iframe>
+            <div class="actions">
+                <a id="pdf-new-tab" class="button" target="_blank" rel="noopener noreferrer">Open PDF in new tab ↗</a>
+                <a id="pdf-download" class="button" download>Download PDF ↓</a>
+            </div>
+        </section>
+
+        <section id="code" class="panel" hidden>
+            <h2>Source File</h2>
+            <pre><code id="code-content"></code></pre>
+            <div class="actions">
+                <a id="code-original" class="button" target="_blank" rel="noopener noreferrer">Open original file ↗</a>
+                <a id="code-download" class="button" download>Download source ↓</a>
+            </div>
+        </section>
+
+        <section id="video" class="panel" hidden>
+            <h2>Recorded Project Defense</h2>
+            <iframe class="youtube" id="video-frame" title="NetVista 3D project presentation"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen></iframe>
+            <div class="actions">
+                <a id="video-original" class="button" target="_blank" rel="noopener noreferrer">Watch on YouTube ↗</a>
+            </div>
+        </section>
+
+        <section id="unsupported" class="panel" hidden>
+            <h2>Viewer unavailable</h2>
+            <p class="status" id="error-message"></p>
+        </section>
+
+        <a class="back" href="index.html" id="back-to-netvista">
+            ← Back to NetVista 3D
+        </a>
+    </main>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const type = params.get("type");
+
+        // Only use known, project-relative file paths for local documents.
+        const localFiles = {
+            csv: "downloads/results.csv",
+            report: "downloads/technical_report.pdf",
+            presentation: "downloads/presentation.pdf",
+            source: "downloads/main.py",
+            config: "downloads/network_config.py"
+        };
+
+        const titles = {
+            graphs: ["Generated Graphs", "Both recorded experiment graphs."],
+            csv: ["Empirical Dataset (CSV)", "Recorded measurements from the simulation."],
+            report: ["Technical Report (PDF)", "The NetVista 3D technical report."],
+            presentation: ["Presentation (PDF)", "Project presentation material."],
+            source: ["Executable Simulation", "Python source file from the project."],
+            config: ["Network Configuration", "Network topology configuration source."],
+            video: ["Narration Video", "Recorded project explanation and viva."]
+        };
+
+        const status = document.getElementById("status");
+
+        function showError(message) {
+            document.querySelectorAll("main > section").forEach(section => {
+                section.hidden = true;
+            });
+
+            document.getElementById("unsupported").hidden = false;
+            document.getElementById("error-message").textContent = message;
+            status.hidden = true;
+        }
+
+        function showPage(sectionId) {
+            document.getElementById(sectionId).hidden = false;
+            status.hidden = true;
+        }
+
+        function setDocumentLink(id, url) {
+            document.getElementById(id).href = url;
+        }
+
+        // Parse CSV including quoted values, commas and escaped quotes.
+        function parseCSV(text) {
+            const rows = [];
+            let row = [];
+            let field = "";
+            let quoted = false;
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+
+                if (char === '"') {
+                    if (quoted && text[i + 1] === '"') {
+                        field += '"';
+                        i++;
+                    } else {
+                        quoted = !quoted;
+                    }
+                } else if (char === "," && !quoted) {
+                    row.push(field);
+                    field = "";
+                } else if ((char === "\n" || char === "\r") && !quoted) {
+                    if (char === "\r" && text[i + 1] === "\n") i++;
+                    row.push(field);
+
+                    if (row.some(value => value.trim() !== "")) rows.push(row);
+
+                    row = [];
+                    field = "";
+                } else {
+                    field += char;
+                }
+            }
+
+            if (field !== "" || row.length) {
+                row.push(field);
+                if (row.some(value => value.trim() !== "")) rows.push(row);
+            }
+
+            return rows;
+        }
+
+        async function loadCSV(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("The CSV file could not be loaded.");
+
+            const text = await response.text();
+            const rows = parseCSV(text);
+
+            if (rows.length < 2) {
+                throw new Error("The CSV has no recorded data rows.");
+            }
+
+            const head = document.getElementById("csv-head");
+            const body = document.getElementById("csv-body");
+
+            const headerRow = document.createElement("tr");
+
+            rows[0].forEach(value => {
+                const th = document.createElement("th");
+                th.textContent = value;
+                headerRow.appendChild(th);
+            });
+
+            head.replaceChildren(headerRow);
+
+            rows.slice(1).forEach(values => {
+                const tr = document.createElement("tr");
+
+                rows[0].forEach((_, index) => {
+                    const td = document.createElement("td");
+                    td.textContent = values[index] ?? "";
+                    tr.appendChild(td);
+                });
+
+                body.appendChild(tr);
+            });
+
+            setDocumentLink("csv-original", url);
+
+            // Download a copy of the same fetched CSV, not reconstructed table data.
+            const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+            const downloadUrl = URL.createObjectURL(blob);
+
+            setDocumentLink("csv-download", downloadUrl);
+            showPage("csv");
+        }
+
+        async function loadCode(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("The source file could not be loaded.");
+
+            document.getElementById("code-content").textContent =
+                await response.text();
+
+            setDocumentLink("code-original", url);
+            setDocumentLink("code-download", url);
+            showPage("code");
+        }
+
+        function getYouTubeEmbed(url) {
+            const parsed = new URL(url);
+
+            if (parsed.hostname === "youtu.be") {
+                return "https://www.youtube-nocookie.com/embed/" +
+                    encodeURIComponent(parsed.pathname.slice(1));
+            }
+
+            if (
+                parsed.hostname === "www.youtube.com" ||
+                parsed.hostname === "youtube.com"
+            ) {
+                if (parsed.pathname === "/watch") {
+                    const id = parsed.searchParams.get("v");
+                    if (id) {
+                        return "https://www.youtube-nocookie.com/embed/" +
+                            encodeURIComponent(id);
+                    }
+                }
+
+                if (parsed.pathname.startsWith("/embed/")) {
+                    return "https://www.youtube-nocookie.com" + parsed.pathname;
+                }
+            }
+
+            throw new Error("Use a valid YouTube video URL.");
+        }
+
+        async function init() {
+            if (!titles[type]) {
+                showError("No valid viewer type was specified in the URL.");
+                return;
+            }
+
+            document.title = "NetVista 3D | " + titles[type][0];
+            document.getElementById("title").textContent = titles[type][0];
+            document.getElementById("description").textContent = titles[type][1];
+
+            try {
+                if (type === "graphs") {
+                    showPage("graphs");
+                } else if (type === "csv") {
+                    await loadCSV(localFiles.csv);
+                } else if (type === "report" || type === "presentation") {
+                    const url = localFiles[type];
+
+                    document.getElementById("pdf-frame").src = url;
+                    setDocumentLink("pdf-new-tab", url);
+                    setDocumentLink("pdf-download", url);
+                    showPage("pdf");
+                } else if (type === "source" || type === "config") {
+                    await loadCode(localFiles[type]);
+                } else if (type === "video") {
+                    const url = params.get("url");
+
+                    if (!url) {
+                        throw new Error("The video URL has not been configured yet.");
+                    }
+
+                    const embedUrl = getYouTubeEmbed(url);
+                    document.getElementById("video-frame").src = embedUrl;
+                    setDocumentLink("video-original", url);
+                    showPage("video");
+                }
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        init();
+        document
+            .getElementById("back-to-netvista")
+            .addEventListener("click", function (event) {
+                event.preventDefault();
+
+                // Return to the previous page in the same tab.
+                if (history.length > 1) {
+                    history.back();
+                } else {
+                    window.location.href = "index.html";
+                }
+            });
+    </script>
+</body>
+
+</html>

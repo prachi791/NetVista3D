@@ -1,0 +1,4465 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description"
+    content="NetVista 3D: Advanced Distance Vector (DV) vs Link State (LS) Update Overhead and Convergence Investigation by Prachi Modi (25CS045).">
+  <title>NetVista 3D: Advanced DV vs LS Update Overhead and Convergence</title>
+
+  <!-- Pinned Google Fonts: IBM Plex Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap"
+    rel="stylesheet">
+
+  <!-- Pinned Chart.js from cdnjs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <style>
+    /* ==========================================================================
+       DESIGN SYSTEM TOKENS (Source: design-system/netvista/MASTER.md)
+       ========================================================================== */
+    :root {
+      --color-bg-page: #080C16;
+      --color-bg-card-solid: #10182A;
+      --color-bg-card-glass: rgba(16, 24, 42, 0.78);
+      --color-border-card: rgba(56, 189, 248, 0.16);
+      --color-border-hover: rgba(34, 211, 238, 0.45);
+      --color-text-primary: #F8FAFC;
+      --color-text-muted: #94A3B8;
+
+      /* Single Cyan Accent */
+      --color-accent-cyan: #22D3EE;
+
+      /* Protocol Semantic Colors */
+      --protocol-dv: #22D3EE;
+      /* Distance Vector: Cyan */
+      --protocol-ls: #A78BFA;
+      /* Link State: Violet */
+
+      /* Telemetry Status Colors (Never used alone) */
+      --status-success: #10B981;
+      --status-warning: #F59E0B;
+      --status-danger: #EF4444;
+
+      /* Roomy Spacing System */
+      --space-1: 8px;
+      --space-2: 16px;
+      --space-3: 24px;
+      --space-4: 32px;
+      --space-5: 48px;
+
+      /* Typography */
+      --font-heading: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      /* Easing & Durations */
+      --ease-technical: cubic-bezier(0.5, 1, 0.89, 1);
+      --duration-fast: 180ms;
+      --duration-normal: 320ms;
+      --duration-slow: 480ms;
+    }
+
+    /* Base Reset & Box Sizing */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background-color: var(--color-bg-page);
+      color: var(--color-text-primary);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    body {
+      background-color: var(--color-bg-page);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Accessibility Skip Link */
+    .skip-link {
+      position: absolute;
+      top: -60px;
+      left: var(--space-2);
+      background: var(--color-accent-cyan);
+      color: #080C16;
+      padding: var(--space-1) var(--space-2);
+      font-weight: 600;
+      border-radius: 4px;
+      z-index: 1000;
+      transition: top var(--duration-fast) var(--ease-technical);
+      text-decoration: none;
+    }
+
+    .skip-link:focus {
+      top: var(--space-2);
+    }
+
+    /* Focus Rings */
+    :focus-visible {
+      outline: 2px solid var(--color-accent-cyan);
+      outline-offset: 3px;
+    }
+
+    /* Scroll Progress Bar */
+    #scroll-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--protocol-dv), var(--protocol-ls));
+      width: 0%;
+      z-index: 999;
+      transition: width 0.1s linear;
+    }
+
+    /* Typography Hierarchy */
+    h1,
+    h2,
+    h3,
+    h4 {
+      font-family: var(--font-heading);
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--color-text-primary);
+      line-height: 1.25;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4.5vw, 3.25rem);
+      margin-bottom: var(--space-2);
+    }
+
+    h2 {
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      margin-bottom: var(--space-2);
+      position: relative;
+      display: inline-block;
+    }
+
+    h3 {
+      font-size: 1.25rem;
+      margin-bottom: var(--space-1);
+    }
+
+    p {
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-2);
+    }
+
+    .mono,
+    code,
+    .metric-number {
+      font-family: var(--font-mono);
+      font-feature-settings: "tnum" 1, "zero" 1;
+    }
+
+    /* Layout Containers */
+    .container {
+      width: 100%;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 var(--space-3);
+    }
+
+    section {
+      padding: var(--space-5) 0;
+      position: relative;
+    }
+
+    /* Sticky Navigation Header (Glassmorphic Budget #1) */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(8, 12, 22, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--color-border-card);
+      transition: background var(--duration-normal);
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+    }
+
+    .brand-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      text-decoration: none;
+      color: var(--color-text-primary);
+      font-weight: 600;
+      font-size: 1.15rem;
+    }
+
+    .brand-icon {
+      color: var(--color-accent-cyan);
+      display: flex;
+      align-items: center;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      list-style: none;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: var(--color-text-muted);
+      font-size: 0.925rem;
+      font-weight: 500;
+      transition: color var(--duration-fast);
+      position: relative;
+      padding: var(--space-1) 0;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.active {
+      color: var(--color-accent-cyan);
+    }
+
+    .nav-links a.active::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--color-accent-cyan);
+      border-radius: 2px;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      background: rgba(34, 211, 238, 0.1);
+      border: 1px solid rgba(34, 211, 238, 0.3);
+      color: var(--color-accent-cyan);
+    }
+
+    .mobile-menu-btn {
+      display: none;
+      background: transparent;
+      border: 1px solid var(--color-border-card);
+      color: var(--color-text-primary);
+      padding: var(--space-1);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    /* Common Card Styles (Solid & Non-budget Glass) */
+    .card {
+      background: var(--color-bg-card-solid);
+      border: 1px solid var(--color-border-card);
+      border-radius: 12px;
+      padding: var(--space-3);
+      transition: transform var(--duration-normal) var(--ease-technical), border-color var(--duration-normal);
+    }
+
+    .card:hover {
+      border-color: var(--color-border-hover);
+    }
+
+    /* HERO SECTION */
+    #hero {
+      position: relative;
+      min-height: calc(100vh - 68px);
+      display: flex;
+      align-items: center;
+      padding: var(--space-5) 0 var(--space-4);
+      overflow: hidden;
+    }
+
+    #hero-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 860px;
+    }
+
+    .hero-meta-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+      margin-bottom: var(--space-2);
+    }
+
+    .meta-pill {
+      font-size: 0.8rem;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(16, 24, 42, 0.9);
+      border: 1px solid var(--color-border-card);
+      color: var(--color-text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .meta-pill strong {
+      color: var(--color-text-primary);
+    }
+
+    .meta-pill.highlight {
+      border-color: rgba(34, 211, 238, 0.4);
+      color: var(--color-accent-cyan);
+    }
+
+    .research-question-box {
+      margin: var(--space-3) 0;
+      padding: var(--space-2) var(--space-3);
+      background: rgba(16, 24, 42, 0.9);
+      border-left: 3px solid var(--color-accent-cyan);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .research-question-box .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-accent-cyan);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .research-question-box .quote {
+      font-size: 1.15rem;
+      color: var(--color-text-primary);
+      font-weight: 500;
+      font-style: italic;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 12px 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: transform var(--duration-fast) var(--ease-technical), background var(--duration-fast), border-color var(--duration-fast);
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+    }
+
+    .btn-primary {
+      background: var(--color-accent-cyan);
+      color: #080C16;
+      border-color: var(--color-accent-cyan);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: #38bdf8;
+    }
+
+    .btn-secondary {
+      background: rgba(16, 24, 42, 0.8);
+      color: var(--color-text-primary);
+      border-color: var(--color-border-card);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      border-color: var(--color-accent-cyan);
+      color: var(--color-accent-cyan);
+    }
+
+    .btn-disabled,
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      border-color: rgba(255, 255, 255, 0.1);
+      background: rgba(16, 24, 42, 0.5);
+      color: var(--color-text-muted);
+      transform: none !important;
+    }
+
+    /* Headline Stats Grid (Glassmorphic Budget #2) */
+    .hero-stats-card {
+      background: var(--color-bg-card-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--color-border-card);
+      border-radius: 12px;
+      padding: var(--space-3);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-3);
+      margin-top: var(--space-2);
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-number {
+      font-size: 2.25rem;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      line-height: 1.1;
+      font-family: var(--font-mono);
+    }
+
+    .stat-number.cyan {
+      color: var(--color-accent-cyan);
+    }
+
+    .stat-number.violet {
+      color: var(--protocol-ls);
+    }
+
+    .stat-number.green {
+      color: var(--status-success);
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--color-text-muted);
+      margin-top: 4px;
+    }
+
+    /* SECTION TITLE WRAPPERS */
+    .section-header {
+      margin-bottom: var(--space-4);
+    }
+
+    .section-tag {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-accent-cyan);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: var(--space-1);
+    }
+
+    /* Section Split Marker */
+
+    /* GRID LAYOUTS */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-3);
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: var(--space-3);
+    }
+
+    /* BADGES & TAGS */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      font-family: var(--font-mono);
+    }
+
+    .badge-dv {
+      background: rgba(34, 211, 238, 0.12);
+      border: 1px solid rgba(34, 211, 238, 0.35);
+      color: var(--protocol-dv);
+    }
+
+    .badge-ls {
+      background: rgba(167, 139, 250, 0.12);
+      border: 1px solid rgba(167, 139, 250, 0.35);
+      color: var(--protocol-ls);
+    }
+
+    .badge-success {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: var(--status-success);
+    }
+
+    .badge-warning {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: var(--status-warning);
+    }
+
+    .badge-danger {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: var(--status-danger);
+    }
+
+    .cite-pill {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: var(--color-text-muted);
+      display: inline-block;
+      margin-top: 6px;
+    }
+
+    /* PROBLEM & OBJECTIVE ANIMATED COMPARISON */
+    .protocol-card {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .protocol-card.dv-card {
+      border-top: 3px solid var(--protocol-dv);
+    }
+
+    .protocol-card.ls-card {
+      border-top: 3px solid var(--protocol-ls);
+    }
+
+    .protocol-diagram {
+      background: rgba(8, 12, 22, 0.7);
+      border: 1px solid var(--color-border-card);
+      border-radius: 8px;
+      padding: var(--space-2);
+      margin: var(--space-2) 0;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+
+    /* TOPOLOGY SECTION (Glassmorphic Budget #3) */
+    .topology-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-3);
+      align-items: start;
+    }
+
+    .topology-stage-card {
+      background: var(--color-bg-card-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--color-border-card);
+      border-radius: 12px;
+      padding: var(--space-3);
+      position: relative;
+    }
+
+    .topology-controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-2);
+      padding-bottom: var(--space-2);
+      border-bottom: 1px solid var(--color-border-card);
+    }
+
+    .svg-canvas-wrapper {
+      width: 100%;
+      height: 360px;
+      background: radial-gradient(circle at center, rgba(16, 30, 58, 0.4) 0%, rgba(8, 12, 22, 0.8) 100%);
+      border: 1px solid var(--color-border-card);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #topology-svg,
+    #sim-topology-svg {
+      width: 100%;
+      height: 100%;
+      max-height: 100%;
+      display: block;
+    }
+
+    /* SVG Elements Styling */
+    .topo-link {
+      stroke: var(--color-border-hover);
+      stroke-width: 2.5;
+      transition: stroke 0.4s var(--ease-technical), stroke-dasharray 0.4s;
+    }
+
+    .topo-link.severed {
+      stroke: var(--status-danger);
+      stroke-width: 2;
+      stroke-dasharray: 6 6;
+      opacity: 0.35;
+    }
+
+    .topo-link.highlight-path {
+      stroke: var(--color-accent-cyan);
+      stroke-width: 4;
+      filter: drop-shadow(0 0 6px var(--color-accent-cyan));
+    }
+
+    .topo-cost-badge rect {
+      fill: #10182A;
+      stroke: var(--color-border-card);
+      stroke-width: 1;
+      rx: 4;
+    }
+
+    .topo-cost-badge text {
+      fill: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .topo-node circle.outer {
+      fill: #10182A;
+      stroke: var(--color-accent-cyan);
+      stroke-width: 2.5;
+      transition: transform 0.3s var(--ease-technical), stroke 0.3s;
+      cursor: pointer;
+    }
+
+    .topo-node:hover circle.outer {
+      transform: scale(1.1);
+      stroke: #FFFFFF;
+    }
+
+    .topo-node circle.inner {
+      fill: rgba(34, 211, 238, 0.2);
+    }
+
+    .topo-node text {
+      fill: #F8FAFC;
+      font-family: var(--font-heading);
+      font-size: 14px;
+      font-weight: 600;
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
+    }
+
+    /* ROUTING TABLES STYLING */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+      margin: var(--space-2) 0;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--color-border-card);
+    }
+
+    .data-table th {
+      background: rgba(16, 24, 42, 0.95);
+      color: var(--color-text-primary);
+      font-weight: 600;
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .data-table td {
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--color-text-primary);
+    }
+
+    .cell-flash {
+      animation: cellHighlight 1.2s var(--ease-technical);
+    }
+
+    @keyframes cellHighlight {
+      0% {
+        background: rgba(34, 211, 238, 0.35);
+        color: #FFFFFF;
+      }
+
+      100% {
+        background: transparent;
+      }
+    }
+
+    /* SIMULATION SECTION (Glassmorphic Budget #4) */
+    .sim-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-bg-card-solid);
+      border: 1px solid var(--color-border-card);
+      border-radius: 12px;
+      margin-bottom: var(--space-3);
+    }
+
+    .sim-button-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sim-btn {
+      background: rgba(16, 24, 42, 0.9);
+      border: 1px solid var(--color-border-card);
+      color: var(--color-text-primary);
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all var(--duration-fast) var(--ease-technical);
+    }
+
+    .sim-btn:hover:not(:disabled) {
+      border-color: var(--color-accent-cyan);
+      color: var(--color-accent-cyan);
+      transform: translateY(-1px);
+    }
+
+    .sim-btn.active {
+      background: rgba(34, 211, 238, 0.15);
+      border-color: var(--color-accent-cyan);
+      color: var(--color-accent-cyan);
+    }
+
+    .sim-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .sim-telemetry-card {
+      background: var(--color-bg-card-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--color-border-card);
+      border-radius: 12px;
+      padding: var(--space-3);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+
+    .sim-scrubber-container {
+      margin: var(--space-2) 0;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .sim-scrubber {
+      flex: 1;
+      height: 8px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      outline: none;
+    }
+
+    .sim-scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--color-accent-cyan);
+      cursor: pointer;
+      border: 2px solid #080C16;
+      box-shadow: 0 0 8px rgba(34, 211, 238, 0.6);
+    }
+
+    /* TABS */
+    .tab-list {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--color-border-card);
+      margin-bottom: var(--space-3);
+      position: relative;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      padding: 10px 18px;
+      color: var(--color-text-muted);
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      position: relative;
+      transition: color var(--duration-fast);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tab-btn:hover {
+      color: var(--color-text-primary);
+    }
+
+    .tab-btn.active {
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
+
+    .tab-indicator {
+      position: absolute;
+      bottom: -1px;
+      height: 2px;
+      background: var(--color-accent-cyan);
+      transition: left var(--duration-normal) var(--ease-technical), width var(--duration-normal) var(--ease-technical);
+    }
+
+    /* CHART WRAPPERS */
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 340px;
+      margin: var(--space-3) 0;
+    }
+
+    /* CALLOUT BOXES */
+    .callout-box {
+      background: rgba(16, 24, 42, 0.9);
+      border: 1px solid var(--color-border-card);
+      border-radius: 8px;
+      padding: var(--space-3);
+      margin: var(--space-3) 0;
+    }
+
+    .callout-box.warning {
+      border-left: 4px solid var(--status-warning);
+    }
+
+    .callout-box.info {
+      border-left: 4px solid var(--color-accent-cyan);
+    }
+
+    .callout-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-weight: 600;
+      margin-bottom: var(--space-1);
+      color: var(--color-text-primary);
+    }
+
+    /* DELIVERABLE CARDS */
+    .deliverable-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+    }
+
+    .deliverable-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: rgba(34, 211, 238, 0.1);
+      color: var(--color-accent-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-2);
+    }
+
+    /* VIDEO WRAPPER */
+    .video-facade-container {
+      position: relative;
+      width: 100%;
+      max-width: 860px;
+      margin: var(--space-3) auto;
+      aspect-ratio: 16 / 9;
+      background: #0E1525;
+      border: 1px solid var(--color-border-card);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: var(--space-3);
+    }
+
+    /* FOOTER */
+    .site-footer {
+      border-top: 1px solid var(--color-border-card);
+      padding: var(--space-5) 0 var(--space-4);
+      background: #060911;
+      margin-top: var(--space-5);
+    }
+
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    /* ACCESSIBILITY UTILITIES */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* RESPONSIVE MEDIA QUERIES */
+    @media (max-width: 900px) {
+      .topology-container {
+        grid-template-columns: 1fr;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .mobile-menu-btn {
+        display: block;
+      }
+
+      .nav-links.mobile-open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 68px;
+        left: 0;
+        width: 100%;
+        background: #0E1525;
+        border-bottom: 1px solid var(--color-border-card);
+        padding: var(--space-3);
+        gap: var(--space-2);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .svg-canvas-wrapper {
+        height: 250px;
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .hero-actions .btn {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .sim-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .sim-button-group {
+        justify-content: center;
+      }
+    }
+
+    /* PREFERS-REDUCED-MOTION (MASTER.md compliance) */
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+
+      #hero-canvas {
+        display: none;
+      }
+
+      .btn:hover {
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="scroll-progress"></div>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#hero" class="brand-link" aria-label="NetVista 3D Homepage">
+        <span class="brand-icon">
+          <!-- Router Icon SVG -->
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="7" width="20" height="10" rx="3"></rect>
+            <circle cx="7" cy="12" r="1.5" fill="currentColor"></circle>
+            <circle cx="12" cy="12" r="1.5" fill="currentColor"></circle>
+            <circle cx="17" cy="12" r="1.5" fill="currentColor"></circle>
+            <path d="M5 7V4"></path>
+            <path d="M19 7V4"></path>
+          </svg>
+        </span>
+        <span>NetVista <span style="color:var(--color-accent-cyan)">3D</span></span>
+      </a>
+
+      <nav aria-label="Primary Navigation">
+        <ul class="nav-links">
+          <li><a href="#problem">Objective</a></li>
+          <li><a href="#assumptions">Assumptions</a></li>
+          <li><a href="#topology">Topology</a></li>
+          <li><a href="#simulation">Simulation</a></li>
+          <li><a href="#results">Results</a></li>
+          <li><a href="#analysis">Analysis</a></li>
+          <li><a href="#deliverables">Deliverables</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-badge">
+        <span style="width:7px; height:7px; border-radius:50%; background:var(--status-success);"
+          aria-hidden="true"></span>
+        <span>ITUC201 Final Submission</span>
+      </div>
+
+      <button class="mobile-menu-btn" id="mobile-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <!-- HERO SECTION -->
+    <section id="hero">
+      <canvas id="hero-canvas" aria-hidden="true"></canvas>
+      <div class="container hero-content">
+        <div class="hero-meta-badges">
+          <span class="meta-pill"><strong>Student:</strong> Prachi Modi</span>
+          <span class="meta-pill"><strong>ID:</strong> 25CS045</span>
+          <span class="meta-pill">B.Tech CSE, Sem 3 (AY 2026-27)</span>
+          <span class="meta-pill highlight">CSPIT, Charusat</span>
+          <span class="meta-pill">Date: 22/10/2026</span>
+        </div>
+
+        <h1>Advanced DV vs LS Update Overhead and Convergence</h1>
+
+        <div class="research-question-box">
+          <div class="label">Research Question</div>
+          <div class="quote">"Under matched topologies, what trade-off exists between message overhead and convergence
+            steps?"</div>
+        </div>
+
+        <p style="font-size: 1.1rem; max-width: 760px;">
+          An empirical comparison of synchronous Distance Vector (Bellman–Ford) and Link State (Dijkstra SPF) routing
+          models across baseline, fresh start, and link-failure recovery scenarios on a five-node network topology.
+        </p>
+
+        <div class="hero-actions">
+          <a href="#simulation" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            Explore Simulation
+          </a>
+          <a href="#results" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="20" x2="18" y2="10"></line>
+              <line x1="12" y1="20" x2="12" y2="4"></line>
+              <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+            View Benchmark Data
+          </a>
+          <a href="#deliverables" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            Submission Files
+          </a>
+        </div>
+
+        <!-- Headline Stats Card (Glassmorphic Budget #2) -->
+        <div class="hero-stats-card" id="hero-stats-card">
+          <div class="stat-item">
+            <div class="stat-number cyan" id="stat-nodes">5</div>
+            <div class="stat-label">Network Nodes (A–E)</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number cyan" id="stat-links">7</div>
+            <div class="stat-label">Bidirectional Links</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number violet" id="stat-rounds">3</div>
+            <div class="stat-label">Convergence Rounds (All Runs)</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number green">
+              <span style="display:inline-flex; align-items:center; gap:4px;">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--status-success)"
+                  stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                PASS
+              </span>
+            </div>
+            <div class="stat-label">Route Distance & Next-Hop</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 2: PROBLEM & OBJECTIVE
+         ======================================================================= -->
+    <section id="problem">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">01 / Theoretical Framework</div>
+          <h2>Routing Protocol Dynamics & Trade-Offs</h2>
+          <p>Analyzing the fundamental mechanisms of Distance Vector (Bellman–Ford) and Link State (Dijkstra SPF)
+            routing.</p>
+        </div>
+
+        <div class="grid-2">
+          <!-- Distance Vector Card -->
+          <div class="card protocol-card dv-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">
+              <h3>Distance Vector Routing</h3>
+              <span class="badge badge-dv">Bellman–Ford Algorithm</span>
+            </div>
+            <p>
+              Often described as <em>"routing by rumor"</em>. Each router maintains a vector of estimated distances to
+              all known destinations and periodically advertises this vector <strong>only to its directly connected
+                neighbors</strong>.
+            </p>
+            <div class="protocol-diagram">
+              <svg viewBox="0 0 320 80" width="100%" height="80" fill="none" stroke="currentColor"
+                aria-label="DV Local Exchange Diagram">
+                <circle cx="50" cy="40" r="22" stroke="var(--protocol-dv)" stroke-width="2" fill="#10182A"></circle>
+                <text x="50" y="44" fill="#F8FAFC" font-family="var(--font-heading)" font-size="14" font-weight="600"
+                  text-anchor="middle">Router A</text>
+
+                <circle cx="270" cy="40" r="22" stroke="var(--protocol-dv)" stroke-width="2" fill="#10182A"></circle>
+                <text x="270" y="44" fill="#F8FAFC" font-family="var(--font-heading)" font-size="14" font-weight="600"
+                  text-anchor="middle">Router B</text>
+
+                <path d="M78 35 H242" stroke="var(--protocol-dv)" stroke-width="2" stroke-dasharray="4 4"></path>
+                <polyline points="236 30 242 35 236 40" stroke="var(--protocol-dv)" stroke-width="2"></polyline>
+
+                <path d="M242 45 H78" stroke="var(--protocol-dv)" stroke-width="2" stroke-dasharray="4 4"></path>
+                <polyline points="84 40 78 45 84 50" stroke="var(--protocol-dv)" stroke-width="2"></polyline>
+
+                <text x="160" y="26" fill="var(--color-text-muted)" font-family="var(--font-mono)" font-size="10"
+                  text-anchor="middle">Distance Vector: [Dest, Cost]</text>
+              </svg>
+            </div>
+            <ul
+              style="list-style:none; padding:0; display:flex; flex-direction:column; gap:8px; font-size:0.9rem; color:var(--color-text-muted);">
+              <li><strong>Exchange Scope:</strong> Direct neighbors only (distributed computation).</li>
+              <li><strong>Mathematical Rule:</strong> $D_x(y) = \min_v \{ c(x,v) + D_v(y) \}$ for neighbors $v$.</li>
+              <li><strong>Trade-off:</strong> Low initial transmission overhead, but slower multi-hop propagation and
+                susceptibility to temporary routing loops or counting-to-infinity.</li>
+            </ul>
+          </div>
+
+          <!-- Link State Card -->
+          <div class="card protocol-card ls-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">
+              <h3>Link State Routing</h3>
+              <span class="badge badge-ls">Dijkstra Shortest Path First</span>
+            </div>
+            <p>
+              Built on <strong>global network awareness</strong>. Each router independently tests its direct link states
+              and floods Link State Advertisements (LSAs) throughout the entire network so every node constructs an
+              identical graph.
+            </p>
+            <div class="protocol-diagram">
+              <svg viewBox="0 0 320 80" width="100%" height="80" fill="none" stroke="currentColor"
+                aria-label="LS Global Flooding Diagram">
+                <circle cx="50" cy="40" r="18" stroke="var(--protocol-ls)" stroke-width="2" fill="#10182A"></circle>
+                <circle cx="160" cy="25" r="18" stroke="var(--protocol-ls)" stroke-width="2" fill="#10182A"></circle>
+                <circle cx="160" cy="65" r="18" stroke="var(--protocol-ls)" stroke-width="2" fill="#10182A"></circle>
+                <circle cx="270" cy="40" r="18" stroke="var(--protocol-ls)" stroke-width="2" fill="#10182A"></circle>
+
+                <path d="M68 35 L142 28" stroke="var(--protocol-ls)" stroke-width="1.5"></path>
+                <path d="M68 45 L142 62" stroke="var(--protocol-ls)" stroke-width="1.5"></path>
+                <path d="M178 28 L252 35" stroke="var(--protocol-ls)" stroke-width="1.5"></path>
+                <path d="M178 62 L252 45" stroke="var(--protocol-ls)" stroke-width="1.5"></path>
+
+                <text x="50" y="44" fill="#F8FAFC" font-family="var(--font-mono)" font-size="11"
+                  text-anchor="middle">A</text>
+                <text x="160" y="29" fill="#F8FAFC" font-family="var(--font-mono)" font-size="11"
+                  text-anchor="middle">B</text>
+                <text x="160" y="69" fill="#F8FAFC" font-family="var(--font-mono)" font-size="11"
+                  text-anchor="middle">C</text>
+                <text x="270" y="44" fill="#F8FAFC" font-family="var(--font-mono)" font-size="11"
+                  text-anchor="middle">D</text>
+                <text x="160" y="10" fill="var(--color-text-muted)" font-family="var(--font-mono)" font-size="10"
+                  text-anchor="middle">LSA Flooding Wavefront</text>
+              </svg>
+            </div>
+            <ul
+              style="list-style:none; padding:0; display:flex; flex-direction:column; gap:8px; font-size:0.9rem; color:var(--color-text-muted);">
+              <li><strong>Exchange Scope:</strong> Flooded globally to all routers in the routing domain.</li>
+              <li><strong>Computation:</strong> Independent local Dijkstra SPF calculation from complete LSDB.</li>
+              <li><strong>Trade-off:</strong> Higher message transmission overhead during topology discovery, but rapid
+                loop-free recovery and deterministic shortest paths.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 3: MODELLING ASSUMPTIONS & LIMITATIONS
+         ======================================================================= -->
+    <section id="assumptions">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">02 / Methodology</div>
+          <h2>Modelling Assumptions & Constraints</h2>
+          <p>Every parameter, counting convention, and operational constraint defined in the simulation code.</p>
+        </div>
+
+        <div class="grid-3">
+          <!-- Card 1 -->
+          <div class="card">
+            <h3>Synchronous Execution Rounds</h3>
+            <p>The simulation runs in discrete synchronous steps. All routers read frozen state from round start
+              simultaneously, preventing race conditions.</p>
+            <div class="cite-pill">Source: main.py:L251-270, L369-375</div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="card">
+            <h3>Five-Node Network Topology</h3>
+            <p>Matched five-node graph (A, B, C, D, E) with 7 bidirectional links. Link costs are symmetric in both
+              forward and reverse directions.</p>
+            <div class="cite-pill">Source: network_config.py:L4-15; README.md:L61</div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="card">
+            <h3>Message Counting Rules</h3>
+            <p><strong>DV:</strong> 1 advertisement per directed neighbor link per round.<br><strong>LS:</strong> LSA
+              transmission attempts, excluding immediate return to sender.</p>
+            <div class="cite-pill">Source: main.py:L278-279, L533-540</div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="card">
+            <h3>Convergence Definitions</h3>
+            <p><strong>DV:</strong> Zero routing table changes across an entire round.<br><strong>LS:</strong> Flooding
+              frontier empty, followed by local Dijkstra execution.</p>
+            <div class="cite-pill">Source: main.py:L240, L302, L519; README.md:L45</div>
+          </div>
+
+          <!-- Card 5 -->
+          <div class="card">
+            <h3>Documented Simplifications</h3>
+            <p>Educational model designed for conceptual clarity. Does not reproduce production router timers, MTU
+              fragmentation, or CPU scheduling.</p>
+            <div class="cite-pill">Source: README.md:L21, L152-157</div>
+          </div>
+
+          <!-- Card 6: Inferred from Code -->
+          <div class="card" style="border-top: 2px solid var(--status-warning);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-1);">
+              <h3>Inferred from Code</h3>
+              <span class="badge badge-warning">Unstated in Docs</span>
+            </div>
+            <p>No packet loss, queueing delay, or link transmission errors. LS lacks LSA aging timers, checksum
+              verification, or sequence number rollover.</p>
+            <div class="cite-pill">Source: main.py (Analysis of code mechanics)</div>
+          </div>
+        </div>
+
+        <!-- Evaluation & Limitations Callout Box -->
+        <div class="callout-box warning">
+          <div class="callout-header">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--status-warning)" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            Critical Evaluation & Methodological Limitations
+          </div>
+          <p style="margin-bottom:8px;">
+            <strong>1. Split Horizon Disparity:</strong> Baseline DV runs standard Bellman–Ford <em>without split
+              horizon</em> (<span class="mono">main.py:287-292</span>), whereas DV recovery specifically applies
+            <em>split horizon with poisoned reverse</em> (<span class="mono">main.py:395-401</span>: <span
+              class="mono">if old_next_hops[neighbor][destination] == node: advertised_cost = inf</span>).
+          </p>
+          <p style="margin-bottom:0;">
+            <strong>2. Non-Like-for-Like Message Units:</strong> DV counts vector advertisement events per directed link
+            (each message carries an entire routing table), while LS counts individual LSA transmission attempts.
+            Furthermore, LS recovery counts only <em>changed LSAs</em> (<span class="mono">main.py:732</span>). These
+            metrics reflect implementation event counts, not raw wire byte volume or network bandwidth.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 4: TOPOLOGY & INJECT LINK CHANGE
+         ======================================================================= -->
+    <section id="topology">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">03 / Network Infrastructure</div>
+          <h2>Interactive 5-Node Topology & Link Change</h2>
+          <p>Inspect the experimental network and inject link failure B–D (Cost 2) in real time.</p>
+        </div>
+
+        <div class="topology-container">
+          <!-- SVG Stage (Glassmorphic Budget #3) -->
+          <div class="topology-stage-card" id="topology-card">
+            <div class="topology-controls">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="badge" id="link-status-badge">
+                  <span id="link-status-dot"
+                    style="width:8px; height:8px; border-radius:50%; background:var(--status-success);"></span>
+                  <span id="link-status-text">Link B–D: ACTIVE (Cost 2)</span>
+                </span>
+              </div>
+              <button class="btn btn-secondary" id="btn-toggle-failure" style="padding: 6px 14px; font-size: 0.85rem;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                  <line x1="12" y1="2" x2="12" y2="12"></line>
+                </svg>
+                <span id="btn-toggle-text">Inject Failure (Cut B–D)</span>
+              </button>
+            </div>
+
+            <div class="svg-canvas-wrapper">
+              <svg id="topology-svg" viewBox="0 0 700 320" preserveAspectRatio="xMidYMid meet"
+                aria-label="Interactive Network Topology Diagram">
+                <!-- SVG Content populated dynamically by script -->
+              </svg>
+            </div>
+            <p style="font-size:0.8rem; color:var(--color-text-muted); margin-top:8px; margin-bottom:0;">
+              💡 <em>Click any router node above to highlight its calculated shortest paths and inspect its local
+                routing table.</em>
+            </p>
+          </div>
+
+          <!-- Dynamic Routing Table Card -->
+          <div class="card" id="topology-table-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">
+              <h3 id="table-node-title">Router A Routing Table</h3>
+              <span class="badge badge-dv" id="table-state-badge">Baseline State</span>
+            </div>
+            <p style="font-size:0.85rem; margin-bottom:var(--space-2);">
+              Shortest path costs and next-hop forwarding decisions calculated and verified against NetworkX reference.
+            </p>
+
+            <div class="table-responsive">
+              <table class="data-table" id="node-routing-table" aria-label="Selected Router Routing Table">
+                <thead>
+                  <tr>
+                    <th>Destination</th>
+                    <th>Cost</th>
+                    <th>Next Hop</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="node-routing-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="callout-box info" style="margin:var(--space-2) 0 0; padding:var(--space-2);">
+              <div style="font-size:0.8rem; color:var(--color-text-muted);">
+                <strong>Path Change on B–D Failure:</strong> Destinations <span class="mono">D</span> and <span
+                  class="mono">B</span> reroute via intermediate node <span class="mono">C</span>. Notice that costs
+                update and affected cells flash dynamically.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 5: SIMULATION WALKTHROUGH
+         ======================================================================= -->
+    <section id="simulation">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">04 / Dynamic Engine</div>
+          <h2>Interactive Protocol Simulation Walkthrough</h2>
+          <p>Step through convergence rounds, trace message advertisements, and observe routing table updates.</p>
+        </div>
+
+        <!-- Simulation Toolbar -->
+        <div class="sim-toolbar">
+          <!-- Scenario Selector -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label for="sim-scenario-select"
+              style="font-size:0.85rem; color:var(--color-text-muted); font-weight:500;">Scenario:</label>
+            <select id="sim-scenario-select" class="sim-btn" style="padding:6px 12px;">
+              <option value="baseline">Initial Convergence (Baseline)</option>
+              <option value="recovery">After Link Change (Recovery)</option>
+              <option value="freshStart">Fresh Start after Failure</option>
+            </select>
+          </div>
+
+          <!-- Protocol Selector -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="sim-btn active" id="sim-proto-dv" data-protocol="DV">
+              <span style="width:8px; height:8px; border-radius:50%; background:var(--protocol-dv);"></span>
+              Distance Vector
+            </button>
+            <button class="sim-btn" id="sim-proto-ls" data-protocol="LS">
+              <span style="width:8px; height:8px; border-radius:50%; background:var(--protocol-ls);"></span>
+              Link State
+            </button>
+          </div>
+
+          <!-- Player Controls -->
+          <div class="sim-button-group">
+            <button class="sim-btn" id="sim-btn-reset" title="Reset to Round 0" aria-label="Reset simulation">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+              </svg>
+            </button>
+            <button class="sim-btn" id="sim-btn-prev" title="Previous Round" aria-label="Previous round">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                <line x1="5" y1="19" x2="5" y2="5"></line>
+              </svg>
+            </button>
+            <button class="sim-btn active" id="sim-btn-play" title="Play / Pause" aria-label="Play or pause simulation">
+              <svg id="play-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </button>
+            <button class="sim-btn" id="sim-btn-next" title="Next Round" aria-label="Next round">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                <line x1="19" y1="5" x2="19" y2="19"></line>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Speed Selector -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <label for="sim-speed-select" style="font-size:0.85rem; color:var(--color-text-muted);">Speed:</label>
+            <select id="sim-speed-select" class="sim-btn" style="padding:4px 8px;">
+              <option value="2000">0.5x</option>
+              <option value="1200" selected>1.0x</option>
+              <option value="600">2.0x</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Telemetry HUD Card (Glassmorphic Budget #4) -->
+        <div class="sim-telemetry-card" id="sim-telemetry-card">
+          <div class="stat-item">
+            <div class="stat-label">Convergence Round</div>
+            <div class="stat-number cyan" id="hud-round" aria-live="polite">Round 0 / 3</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Cumulative Messages</div>
+            <div class="stat-number violet" id="hud-messages" aria-live="polite">0 attempts</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Convergence State</div>
+            <div id="hud-state-container" aria-live="polite">
+              <span class="badge badge-warning" id="hud-status-badge">
+                <span style="width:7px; height:7px; border-radius:50%; background:var(--status-warning);"></span>
+                Initializing
+              </span>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Route Validation</div>
+            <div>
+              <span class="badge badge-success">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                PASS (Validated)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Simulation Network Stage (Animated Topology) -->
+        <div class="card" style="margin-bottom:var(--space-3); padding:var(--space-3);" id="sim-topology-stage-card">
+          <div
+            style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2); flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge" id="sim-topo-link-badge">
+                <span id="sim-topo-link-dot"
+                  style="width:8px; height:8px; border-radius:50%; background:var(--status-success);"></span>
+                <span id="sim-topo-link-text">Link B–D: ACTIVE (Cost 2)</span>
+              </span>
+              <span class="badge badge-dv" id="sim-anim-status-badge">
+                <span style="width:7px; height:7px; border-radius:50%; background:var(--color-accent-cyan);"></span>
+                <span id="sim-anim-status-text">Ready to Simulate</span>
+              </span>
+            </div>
+            <div style="font-size:0.85rem; color:var(--color-text-muted);" id="sim-transmission-tally">
+              Transmissions this round: <strong class="mono" style="color:var(--color-text-primary);"
+                id="sim-round-msg-count">0</strong> attempts
+            </div>
+          </div>
+
+          <div class="svg-canvas-wrapper">
+            <svg id="sim-topology-svg" viewBox="0 0 700 320" preserveAspectRatio="xMidYMid meet"
+              aria-label="Interactive Protocol Simulation Animation">
+              <!-- Animated topology links, packet flows, nodes rendered by engine -->
+            </svg>
+          </div>
+          <div
+            style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:0.8rem; color:var(--color-text-muted); flex-wrap:wrap; gap:8px;">
+            <span>💡 <em>Press <strong>Play (▶)</strong> or <strong>Next (⏭)</strong> to start the interactive packet
+                flow & routing update propagation.</em></span>
+            <span id="sim-active-mode-label" class="mono" style="color:var(--protocol-dv);">Mode: Distance Vector
+              Updates</span>
+          </div>
+        </div>
+
+        <!-- Scrubber -->
+        <div class="sim-scrubber-container">
+          <span class="mono" style="font-size:0.85rem; color:var(--color-text-muted);">R0</span>
+          <input type="range" min="0" max="3" value="0" step="1" class="sim-scrubber" id="sim-scrubber"
+            aria-label="Simulation round scrubber">
+          <span class="mono" style="font-size:0.85rem; color:var(--color-text-muted);">R3</span>
+        </div>
+
+        <!-- Simulation Narrative Box -->
+        <div class="card" style="margin-bottom:var(--space-3);">
+          <div style="font-weight:600; font-size:1rem; margin-bottom:4px; color:var(--color-text-primary);"
+            id="sim-narrative-title">
+            Round 0: Local Direct Knowledge Initialization
+          </div>
+          <p style="margin:0; font-size:0.95rem; color:var(--color-text-muted);" id="sim-narrative-desc">
+            Routers initialize their internal databases with known direct links. Distant nodes remain undiscovered
+            ($cost = \infty$).
+          </p>
+        </div>
+
+        <!-- Live Step-by-Step Table Display -->
+        <div class="card">
+          <h3 style="margin-bottom:var(--space-2);">Active Router Distance Matrices (Live Round State)</h3>
+          <div class="table-responsive">
+            <table class="data-table" id="sim-matrix-table" aria-label="Step-by-step routing distance matrix">
+              <thead>
+                <tr>
+                  <th>Router</th>
+                  <th>Dest A</th>
+                  <th>Dest B</th>
+                  <th>Dest C</th>
+                  <th>Dest D</th>
+                  <th>Dest E</th>
+                </tr>
+              </thead>
+              <tbody id="sim-matrix-tbody">
+                <!-- Dynamically populated per round -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 6: RESULTS & BENCHMARKS
+         ======================================================================= -->
+    <section id="results">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">05 / Measured Data</div>
+          <h2>Experimental Results & Verification</h2>
+          <p>Exact experimental values recorded in <span class="mono">results.csv</span> across all six execution runs.
+          </p>
+        </div>
+
+        <!-- Results Tabs -->
+        <div class="tab-list" role="tablist" aria-label="Results Filter Tabs">
+          <button class="tab-btn active" role="tab" aria-selected="true" id="tab-all" data-filter="all">All
+            Experiments</button>
+          <button class="tab-btn" role="tab" aria-selected="false" id="tab-dv" data-filter="DV">Distance Vector</button>
+          <button class="tab-btn" role="tab" aria-selected="false" id="tab-ls" data-filter="LS">Link State</button>
+          <div class="tab-indicator" id="results-tab-indicator"></div>
+        </div>
+
+        <!-- Empirical Results Table -->
+        <div class="card" style="margin-bottom:var(--space-4);">
+          <div class="table-responsive">
+            <table class="data-table" id="results-table" aria-label="Recorded experimental results from results.csv">
+              <thead>
+                <tr>
+                  <th>Experiment Scenario</th>
+                  <th>Algorithm</th>
+                  <th>Rounds</th>
+                  <th>Message Count</th>
+                  <th>Message Type Description</th>
+                  <th>Distance Check</th>
+                  <th>Next-Hop Check</th>
+                </tr>
+              </thead>
+              <tbody id="results-tbody">
+                <!-- Populated strictly from SITE_DATA -->
+              </tbody>
+            </table>
+          </div>
+          <p style="font-size:0.8rem; color:var(--color-text-muted); margin-top:8px; margin-bottom:0;">
+            * <em>Footnote: <span class="mono">results.csv:L7</span> lists LS recovery as "LSA transmission attempts",
+              while the execution console specifically reports "Changed-LSA transmission attempts" (<span
+                class="mono">main.py:L732</span>). Both refer to the identical 16 attempts.</em>
+          </p>
+        </div>
+
+        <!-- Chart.js Visualization Grid -->
+        <div class="grid-2">
+          <!-- Message Overhead Chart Card -->
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">
+              <h3>Message Overhead Comparison</h3>
+              <span class="badge badge-dv">Update Messages</span>
+            </div>
+            <p style="font-size:0.85rem;">Total transmission attempts counted until complete network convergence.</p>
+            <div class="chart-container">
+              <canvas id="chart-overhead"
+                aria-label="Bar chart showing message overhead between DV and LS across baseline, fresh start, and recovery."
+                role="img"></canvas>
+            </div>
+            <!-- Accessible table fallback for screen readers -->
+            <div class="sr-only">
+              <table>
+                <caption>Message Overhead Data Alternative</caption>
+                <thead>
+                  <tr>
+                    <th>Scenario</th>
+                    <th>DV Messages</th>
+                    <th>LS Messages</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Baseline</td>
+                    <td>42</td>
+                    <td>50</td>
+                  </tr>
+                  <tr>
+                    <td>Fresh start after failure</td>
+                    <td>36</td>
+                    <td>40</td>
+                  </tr>
+                  <tr>
+                    <td>Recovery after failure</td>
+                    <td>36</td>
+                    <td>16</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Convergence Rounds Chart Card -->
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2);">
+              <h3>Convergence Rounds</h3>
+              <span class="badge badge-ls">Synchronous Rounds</span>
+            </div>
+            <p style="font-size:0.85rem;">Convergence round counts recorded across all six experimental conditions.</p>
+            <div class="chart-container">
+              <canvas id="chart-rounds" aria-label="Bar chart illustrating convergence rounds across all scenarios."
+                role="img"></canvas>
+            </div>
+            <!-- Accessible table fallback for screen readers -->
+            <div class="sr-only">
+              <table>
+                <caption>Convergence Rounds Data Alternative</caption>
+                <thead>
+                  <tr>
+                    <th>Scenario</th>
+                    <th>DV Rounds</th>
+                    <th>LS Rounds</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Baseline</td>
+                    <td>3</td>
+                    <td>3</td>
+                  </tr>
+                  <tr>
+                    <td>Fresh start after failure</td>
+                    <td>3</td>
+                    <td>3</td>
+                  </tr>
+                  <tr>
+                    <td>Recovery after failure</td>
+                    <td>3</td>
+                    <td>3</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 7: ANALYSIS & TRADE-OFFS
+         ======================================================================= -->
+    <section id="analysis">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">06 / Evaluation</div>
+          <h2>Analysis & Trade-Off Synthesis</h2>
+          <p>Scientific conclusions drawn strictly from the measured empirical results.</p>
+        </div>
+
+        <div class="grid-3">
+          <!-- Finding 1 -->
+          <div class="card">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:var(--space-1);">
+              <span class="badge badge-warning">Equal Steps: 3 Rounds</span>
+            </div>
+            <h3>Convergence Round Invariance</h3>
+            <p>
+              All six experimental scenarios terminated in <strong>exactly 3 synchronous rounds</strong>. The
+              experimental data does <em>not</em> show that either algorithm converged faster in terms of round count.
+            </p>
+            <div class="cite-pill">Source: results.csv:col 3; README.md:L106</div>
+          </div>
+
+          <!-- Finding 2 -->
+          <div class="card">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:var(--space-1);">
+              <span class="badge badge-dv">Baseline: DV 42 vs LS 50</span>
+            </div>
+            <h3>Initial Flooding Overhead</h3>
+            <p>
+              In initial network discovery, DV produced <strong>42 vector advertisements</strong> vs <strong>50 for
+                LS</strong>. Link State incurs a 19% higher message overhead initially because every router floods its
+              LSA to all network nodes.
+            </p>
+            <div class="cite-pill">Source: results.csv:L2-3</div>
+          </div>
+
+          <!-- Finding 3 -->
+          <div class="card">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:var(--space-1);">
+              <span class="badge badge-ls">Recovery: LS 16 vs DV 36</span>
+            </div>
+            <h3>Failure Recovery Inversion</h3>
+            <p>
+              When link B–D failed, LS required only <strong>16 changed-LSA transmissions</strong> compared to
+              <strong>36 for DV</strong> (a 55.6% reduction). LS flooded only the single changed link status, whereas DV
+              re-advertised full vectors across all surviving links.
+            </p>
+            <div class="cite-pill">Source: results.csv:L6-7</div>
+          </div>
+        </div>
+
+        <!-- Detailed Theoretical Conclusion -->
+        <div class="callout-box info" style="margin-top:var(--space-4);">
+          <div class="callout-header">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--color-accent-cyan)"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            Research Question Answer
+          </div>
+          <p style="margin-bottom:8px;">
+            <strong>Under matched topologies, what trade-off exists between message overhead and convergence
+              steps?</strong>
+          </p>
+          <p style="margin-bottom:0;">
+            The empirical results demonstrate a clear trade-off governed by topology dynamism: In static baseline
+            initialization, <strong>Distance Vector produces fewer messages</strong> (42 vs 50) because information is
+            communicated strictly among adjacent neighbors. However, during link-failure recovery, <strong>Link State
+              achieves dramatically lower message overhead</strong> (16 vs 36) because only the two endpoints of the
+            severed link need to originate updates, whereas Distance Vector requires every router to continue periodic
+            vector exchanges across all active links until the entire system stabilizes.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 8: DELIVERABLES
+         ======================================================================= -->
+    <section id="deliverables">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">07 / Project Artifacts</div>
+          <h2>Mandatory Submission Deliverables</h2>
+          <p>Complete project components required for ITUC201 submission.</p>
+        </div>
+
+        <div class="grid-3">
+          <!-- Deliverable 1 -->
+          <div class="card deliverable-card">
+            <div>
+              <div class="deliverable-icon">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="4 17 10 11 4 5"></polyline>
+                  <line x1="12" y1="19" x2="20" y2="19"></line>
+                </svg>
+              </div>
+              <h3>Executable Simulation</h3>
+              <p>Python implementation (<span class="mono">main.py</span>) containing synchronous DV, LS, Dijkstra SPF,
+                and NetworkX validation suite.</p>
+            </div>
+            <a href="javascript:void(0)" class="btn btn-secondary btn-disabled" id="deliv-sim" aria-disabled="true">
+              <span>🔒 Link Coming Soon</span>
+            </a>
+          </div>
+
+          <!-- Deliverable 2 -->
+          <div class="card deliverable-card">
+            <div>
+              <div class="deliverable-icon">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+              </div>
+              <h3>Empirical Dataset (CSV)</h3>
+              <p>Raw recorded metrics (<span class="mono">results.csv</span>) including message counts, algorithm types,
+                and route validation results.</p>
+            </div>
+            <a href="javascript:void(0)" class="btn btn-secondary btn-disabled" id="deliv-csv" aria-disabled="true">
+              <span>🔒 Link Coming Soon</span>
+            </a>
+          </div>
+
+          <!-- Deliverable 3 -->
+          <div class="card deliverable-card">
+            <div>
+              <div class="deliverable-icon">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="20" x2="18" y2="10"></line>
+                  <line x1="12" y1="20" x2="12" y2="4"></line>
+                  <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+              </div>
+              <h3>Generated Graphs</h3>
+              <p>High-resolution comparative plots for message overhead and convergence rounds generated via matplotlib.
+              </p>
+            </div>
+            <a href="javascript:void(0)" class="btn btn-secondary btn-disabled" id="deliv-graphs" aria-disabled="true">
+              <span>🔒 Link Coming Soon</span>
+            </a>
+          </div>
+
+          <!-- Deliverable 4 -->
+          <div class="card deliverable-card">
+            <div>
+              <div class="deliverable-icon">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+              </div>
+              <h3>Narration Video (YouTube)</h3>
+              <p>10–15 minute detailed technical explanation and viva presentation narrated by Prachi Modi.</p>
+            </div>
+            <a href="javascript:void(0)" class="btn btn-secondary btn-disabled" id="deliv-video" aria-disabled="true">
+              <span>🔒 Link Coming Soon</span>
+            </a>
+          </div>
+
+          <!-- Deliverable 5 -->
+          <div class="card deliverable-card">
+            <div>
+              <div class="deliverable-icon">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                  </path>
+                </svg>
+              </div>
+              <h3>Topology Config Script</h3>
+              <p>Declarative network setup file (<span class="mono">network_config.py</span>) declaring nodes, links,
+                and the B–D failure parameter.</p>
+            </div>
+            <a href="javascript:void(0)" class="btn btn-secondary btn-disabled" id="deliv-config" aria-disabled="true">
+              <span>🔒 Link Coming Soon</span>
+            </a>
+          </div>
+
+          <!-- Deliverable 6 -->
+          <div class="card deliverable-card">
+            <div>
+              <div class="deliverable-icon">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                </svg>
+              </div>
+              <h3>Technical Report (PDF)</h3>
+              <p>Comprehensive IEEE-style academic report detailing objectives, derivation, test matrices, and
+                reproduction instructions.</p>
+            </div>
+            <a href="javascript:void(0)" class="btn btn-secondary btn-disabled" id="deliv-report" aria-disabled="true">
+              <span>🔒 Link Coming Soon</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         SECTION 9: VIDEO PRESENTATION
+         ======================================================================= -->
+    <section id="video">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">08 / Video Defense</div>
+          <h2>Recorded Project Defense</h2>
+          <p>Official 10–15 minute narrated presentation covering methodology and viva exam defense.</p>
+        </div>
+
+        <div class="video-facade-container" id="video-wrapper">
+          <div id="video-placeholder-content">
+            <div
+              style="width:68px; height:68px; border-radius:50%; background:rgba(34, 211, 238, 0.15); border:2px solid var(--color-accent-cyan); display:flex; align-items:center; justify-content:center; margin:0 auto var(--space-2); color:var(--color-accent-cyan);">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </div>
+            <h3 style="margin-bottom:var(--space-1);">Defense Video Coming Soon</h3>
+            <p style="max-width:500px; margin:0 auto var(--space-2); font-size:0.9rem;">
+              The YouTube narration URL will be populated in <span class="mono">SITE_DATA.links.video</span> upon final
+              recording upload.
+            </p>
+            <span class="badge badge-warning">Expected Length: 10–15 Minutes</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- =======================================================================
+       SECTION 10: FOOTER
+       ======================================================================= -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <div style="font-weight:600; font-size:1.1rem; color:var(--color-text-primary); margin-bottom:4px;">
+          NetVista <span style="color:var(--color-accent-cyan)">3D</span> — Computer Networks Investigation
+        </div>
+        <p style="font-size:0.85rem; margin:0; color:var(--color-text-muted);">
+          Fundamentals of Computer Networks (ITUC201) • Department of Computer Science & Engineering<br>
+          Chandubhai S. Patel Institute of Technology (CSPIT), Charusat University
+        </p>
+      </div>
+
+      <div style="text-align:right;">
+        <div class="mono" style="font-size:0.85rem; color:var(--color-accent-cyan); margin-bottom:4px;">
+          Prachi Modi (ID: 25CS045)
+        </div>
+        <div style="font-size:0.8rem; color:var(--color-text-muted);">
+          Submission Date: <strong>22/10/2026</strong> • Semester 3, AY 2026-27
+        </div>
+      </div>
+    </div>
+  </footer>
+
+
+  <script>
+    /* ==========================================================================
+       SITE_DATA — SINGLE SOURCE OF TRUTH (Plain const, no export)
+       Every number, label, and assumption is strictly derived from source-data/
+       ========================================================================== */
+
+    /* Preserve NetVista 3D main-page scroll position */
+    (() => {
+      const scrollKey = "netvista-index-scroll";
+
+      // Let our code control restoration.
+      if ("scrollRestoration" in history) {
+        history.scrollRestoration = "auto";
+      }
+
+      // Save the current position before navigating away.
+      window.addEventListener("pagehide", () => {
+        sessionStorage.setItem(scrollKey, String(window.scrollY));
+      });
+
+      // Restore it when returning to the main page.
+      window.addEventListener("pageshow", () => {
+        const savedPosition = sessionStorage.getItem(scrollKey);
+
+        if (savedPosition !== null) {
+          requestAnimationFrame(() => {
+            window.scrollTo({
+              top: Number(savedPosition),
+              behavior: "instant"
+            });
+          });
+        }
+      });
+    })();
+
+    const SITE_DATA = {
+      project: {
+        title: "NetVista 3D: Advanced DV vs LS Update Overhead and Convergence", // README.md:L1-2
+        student: "Prachi Modi",                                                  // README.md:L4
+        studentId: "25CS045",                                                    // README.md:L5
+        course: "Fundamentals of Computer Networks (ITUC201)",                  // README.md:L7
+        institution: "CSPIT, Charusat University",                              // README.md:L6, L170
+        submissionDate: "22/10/2026",                                            // README.md:L174
+        researchQuestion: "Under matched topologies, what trade-off exists between message overhead and convergence steps?", // README.md:L25
+        metrics: ["update count", "convergence rounds", "route accuracy"]        // README.md:L65
+      },
+
+      // External resource links (Placeholders: populated when submitted)
+      links: {
+        video: "viewer.html?type=video&url=YOUR_ENCODED_YOUTUBE_URL",             // YouTube narration URL (empty string = "Link coming soon")
+        reportPdf: "viewer.html?type=report",         // Technical report PDF link
+        sourceCode: "viewer.html?type=source",        // Source repository link
+        csvData: "viewer.html?type=csv",           // Raw measurements CSV download
+        overheadGraph: "viewer.html?type=graphs",     // Message overhead graph PNG
+        convergenceGraph: "viewer.html?type=graphs",  // Convergence rounds graph PNG
+        networkConfig: "viewer.html?type=config"      // Network configuration script
+      },
+
+      // 5-Node Network Topology (network_config.py:L4-15; README.md:L61)
+      topology: {
+        nodes: ["A", "B", "C", "D", "E"], // network_config.py:L4
+        links: [
+          { source: "A", target: "B", cost: 2 }, // network_config.py:L8
+          { source: "A", target: "C", cost: 5 }, // network_config.py:L9
+          { source: "B", target: "C", cost: 1 }, // network_config.py:L10
+          { source: "B", target: "D", cost: 2 }, // network_config.py:L11
+          { source: "C", target: "D", cost: 3 }, // network_config.py:L12
+          { source: "C", target: "E", cost: 1 }, // network_config.py:L13
+          { source: "D", target: "E", cost: 2 }  // network_config.py:L14
+        ]
+      },
+
+      // Injected Link Change (network_config.py:L18; main.py:L7, L807; README.md:L64)
+      linkChange: {
+        failedLink: ["B", "D"], // network_config.py:L18
+        cost: 2,               // network_config.py:L11
+        action: "remove",      // main.py:L28-36
+        description: "Sever bidirectional link between Router B and Router D"
+      },
+
+      // Message Counting Rules (main.py:L278-279, L381-383, L533-540, L678-682; README.md:L91-96)
+      messageCountingRules: {
+        distanceVector: {
+          baselineAndFreshStart: "Count one advertisement per directed neighbour link per round (14 directed links baseline, 12 after failure).", // main.py:L278-279
+          recovery: "One distance-vector advertisement per directed link per round (sum of active neighbor counts).",                          // main.py:L380-383
+          label: "DV vector advertisement attempts" // results.csv:L2(col 5); main.py:L789
+        },
+        linkState: {
+          baselineAndFreshStart: "Count each LSA transmission attempt, excluding advertisements sent directly back to the incoming sender.", // main.py:L533-540
+          recovery: "Flood changed LSAs across changed topology, counting each transmission attempt excluding return to sender.",            // main.py:L672-682
+          label: "LSA transmission attempts",               // results.csv:L3(col 5); main.py:L790
+          consoleLabelNote: "Changed-LSA transmission attempts" // main.py:L732 (printed in console)
+        }
+      },
+
+      // Convergence Definitions (main.py:L240, L302, L366, L519, L668; README.md:L45-46)
+      convergenceDefinition: {
+        distanceVector: "A complete synchronous round produces zero cost or next-hop changes across all routers.", // main.py:L240, L302-303, L412-421
+        linkState: "LSA flooding frontiers empty across all routers, followed by independent local Dijkstra calculations." // main.py:L519, L574, L668, L716
+      },
+
+      // Documented Simplifications (README.md:L21, L152-157)
+      modelSimplifications: [
+        { text: "Educational teaching simulation; does not reproduce complete production router protocol stacks.", cite: "README.md:L21, L152" },
+        { text: "Five-node network topology rather than an enterprise or transit-tier graph.", cite: "README.md:L19, L153" },
+        { text: "Synchronous round-based progression where all routers read frozen previous-round states simultaneously.", cite: "main.py:L251-270, L369-375" },
+        { text: "Message metrics measure transmission attempt events, not packet byte size, MTU, or link bandwidth.", cite: "README.md:L95-96, L154" },
+        { text: "Convergence rounds represent model-specific stopping conditions, not asynchronous wall-clock time.", cite: "README.md:L106-107, L155" },
+        { text: "Symmetric bidirectional links with identical transmission costs in both directions.", cite: "network_config.py:L6; main.py:L21-23" }
+      ],
+
+      // Inferred from Code (Not explicitly stated in README.md documentation)
+      inferredFromCode: [
+        { text: "Zero packet loss, jitter, or link transmission errors modelled in the channel.", cite: "main.py (no drop/delay logic)" },
+        { text: "Zero queueing delay; received LSAs are processed immediately at round boundaries.", cite: "main.py:L547-550, L691-700" },
+        { text: "LS model omits LSA age timers, checksum verification, sequence number rollover, and database acknowledgments.", cite: "main.py:L489-551, L621-702" }
+      ],
+
+      // Limitations & Asymmetries (main.py:L287-292 vs L395-401; README.md:L91-96, L154)
+      limitations: [
+        { title: "Split Horizon Asymmetry", text: "Baseline DV runs plain Bellman–Ford without split horizon (main.py:287-292), while DV recovery enforces split horizon with poisoned reverse (main.py:395-401).", cite: "main.py:L287, L395" },
+        { title: "Non-Like-for-Like Counting", text: "DV counts entire vector advertisements (full routing tables per message), whereas LS counts individual link-state packets, and LS recovery counts only changed LSAs.", cite: "README.md:L95-96; main.py:L732" }
+      ],
+
+      // Empirical Recorded Results (results.csv:L1-7; README.md:L79-88)
+      measuredResults: [
+        {
+          scenario: "Baseline",
+          algorithm: "DV",
+          rounds: 3,
+          messageCount: 42,
+          messageType: "DV vector advertisement attempts",
+          distanceValidation: "PASS",
+          nextHopValidation: "PASS",
+          perRound: [14, 14, 14] // Verified from scratch execution: 14 directed links * 3 rounds = 42
+        },
+        {
+          scenario: "Baseline",
+          algorithm: "LS",
+          rounds: 3,
+          messageCount: 50,
+          messageType: "LSA transmission attempts",
+          distanceValidation: "PASS",
+          nextHopValidation: "PASS",
+          perRound: [14, 28, 8] // Verified from scratch execution: 14 + 28 + 8 = 50
+        },
+        {
+          scenario: "Fresh start after failure",
+          algorithm: "DV",
+          rounds: 3,
+          messageCount: 36,
+          messageType: "DV vector advertisement attempts",
+          distanceValidation: "PASS",
+          nextHopValidation: "PASS",
+          perRound: [12, 12, 12] // Verified from scratch execution: 12 directed links * 3 rounds = 36
+        },
+        {
+          scenario: "Fresh start after failure",
+          algorithm: "LS",
+          rounds: 3,
+          messageCount: 40,
+          messageType: "LSA transmission attempts",
+          distanceValidation: "PASS",
+          nextHopValidation: "PASS",
+          perRound: [12, 20, 8] // Verified from scratch execution: 12 + 20 + 8 = 40
+        },
+        {
+          scenario: "Recovery after failure",
+          algorithm: "DV",
+          rounds: 3,
+          messageCount: 36,
+          messageType: "DV vector advertisement attempts",
+          distanceValidation: "PASS",
+          nextHopValidation: "PASS",
+          perRound: [12, 12, 12] // Verified from scratch execution: 12 directed links * 3 rounds = 36
+        },
+        {
+          scenario: "Recovery after failure",
+          algorithm: "LS",
+          rounds: 3,
+          messageCount: 16,
+          messageType: "LSA transmission attempts", // Note: console prints "Changed-LSA transmission attempts" (main.py:732)
+          distanceValidation: "PASS",
+          nextHopValidation: "PASS",
+          perRound: [4, 8, 4] // Verified from scratch execution: 4 + 8 + 4 = 16
+        }
+      ],
+
+      // Complete Shortest Path & Routing Tables (Computed from simulation and verified with NetworkX)
+      routingTables: {
+        baseline: {
+          A: [{ dest: "A", cost: 0, nextHop: "A" }, { dest: "B", cost: 2, nextHop: "B" }, { dest: "C", cost: 3, nextHop: "B" }, { dest: "D", cost: 4, nextHop: "B" }, { dest: "E", cost: 4, nextHop: "B" }],
+          B: [{ dest: "A", cost: 2, nextHop: "A" }, { dest: "B", cost: 0, nextHop: "B" }, { dest: "C", cost: 1, nextHop: "C" }, { dest: "D", cost: 2, nextHop: "D" }, { dest: "E", cost: 2, nextHop: "C" }],
+          C: [{ dest: "A", cost: 3, nextHop: "B" }, { dest: "B", cost: 1, nextHop: "B" }, { dest: "C", cost: 0, nextHop: "C" }, { dest: "D", cost: 3, nextHop: "D" }, { dest: "E", cost: 1, nextHop: "E" }],
+          D: [{ dest: "A", cost: 4, nextHop: "B" }, { dest: "B", cost: 2, nextHop: "B" }, { dest: "C", cost: 3, nextHop: "C" }, { dest: "D", cost: 0, nextHop: "D" }, { dest: "E", cost: 2, nextHop: "E" }],
+          E: [{ dest: "A", cost: 4, nextHop: "C" }, { dest: "B", cost: 2, nextHop: "C" }, { dest: "C", cost: 1, nextHop: "C" }, { dest: "D", cost: 2, nextHop: "D" }, { dest: "E", cost: 0, nextHop: "E" }]
+        },
+        recovered: {
+          A: [{ dest: "A", cost: 0, nextHop: "A" }, { dest: "B", cost: 2, nextHop: "B" }, { dest: "C", cost: 3, nextHop: "B" }, { dest: "D", cost: 6, nextHop: "B", changed: true }, { dest: "E", cost: 4, nextHop: "B" }],
+          B: [{ dest: "A", cost: 2, nextHop: "A" }, { dest: "B", cost: 0, nextHop: "B" }, { dest: "C", cost: 1, nextHop: "C" }, { dest: "D", cost: 4, nextHop: "C", changed: true }, { dest: "E", cost: 2, nextHop: "C" }],
+          C: [{ dest: "A", cost: 3, nextHop: "B" }, { dest: "B", cost: 1, nextHop: "B" }, { dest: "C", cost: 0, nextHop: "C" }, { dest: "D", cost: 3, nextHop: "D" }, { dest: "E", cost: 1, nextHop: "E" }],
+          D: [{ dest: "A", cost: 6, nextHop: "C", changed: true }, { dest: "B", cost: 4, nextHop: "C", changed: true }, { dest: "C", cost: 3, nextHop: "C" }, { dest: "D", cost: 0, nextHop: "D" }, { dest: "E", cost: 2, nextHop: "E" }],
+          E: [{ dest: "A", cost: 4, nextHop: "C" }, { dest: "B", cost: 2, nextHop: "C" }, { dest: "C", cost: 1, nextHop: "C" }, { dest: "D", cost: 2, nextHop: "D" }, { dest: "E", cost: 0, nextHop: "E" }]
+        }
+      },
+
+      // Step-by-Step Simulation States per Round (Extracted directly from scratch execution of main.py)
+      simulationSteps: {
+        "baseline_DV": [
+          {
+            "round": 0,
+            "messagesThisRound": 0,
+            "cumulativeMessages": 0,
+            "converged": false,
+            "title": "Round 0: Local Direct Knowledge Initialization",
+            "desc": "Routers initialize local tables with directly connected neighbors. Distant destinations have infinite cost.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 5,
+                "D": "Infinity",
+                "E": "Infinity"
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": "Infinity"
+              },
+              "C": {
+                "A": 5,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": "Infinity",
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 1,
+            "messagesThisRound": 14,
+            "cumulativeMessages": 14,
+            "converged": false,
+            "title": "Round 1: Vector Advertisement Exchange",
+            "desc": "All 14 directed links transmit routing vectors. Routes updated across the network.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 6
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 4,
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 6,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 2,
+            "messagesThisRound": 14,
+            "cumulativeMessages": 28,
+            "converged": false,
+            "title": "Round 2: Vector Advertisement Exchange",
+            "desc": "All 14 directed links transmit routing vectors. Routes updated across the network.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 4,
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 3,
+            "messagesThisRound": 14,
+            "cumulativeMessages": 42,
+            "converged": true,
+            "title": "Round 3: Stabilization & Convergence Verified",
+            "desc": "All 14 directed links exchange vectors. Zero costs change. Universal convergence reached.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 4,
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          }
+        ],
+        "baseline_LS": [
+          {
+            "round": 0,
+            "messagesThisRound": 0,
+            "cumulativeMessages": 0,
+            "converged": false,
+            "title": "Round 0: Direct Link-State Detection",
+            "desc": "Each router discovers and measures costs to direct neighbors, generating its initial local LSA.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 5,
+                "D": "Infinity",
+                "E": "Infinity"
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": "Infinity"
+              },
+              "C": {
+                "A": 5,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": "Infinity",
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 1,
+            "messagesThisRound": 14,
+            "cumulativeMessages": 14,
+            "converged": false,
+            "title": "Round 1: Global LSA Flooding Wave",
+            "desc": "14 LSA transmission attempts. Routers receive and forward topology link advertisements.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 4,
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 6,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 2,
+            "messagesThisRound": 28,
+            "cumulativeMessages": 42,
+            "converged": false,
+            "title": "Round 2: Global LSA Flooding Wave",
+            "desc": "28 LSA transmission attempts. Routers receive and forward topology link advertisements.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 4,
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 3,
+            "messagesThisRound": 8,
+            "cumulativeMessages": 50,
+            "converged": true,
+            "title": "Round 3: Flooding Complete & Dijkstra SPF Re-computation",
+            "desc": "Frontiers empty after 8 final transmissions. Total 50 attempts. All routers execute Dijkstra SPF.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 2,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 4,
+                "B": 2,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          }
+        ],
+        "freshStart_DV": [
+          {
+            "round": 0,
+            "messagesThisRound": 0,
+            "cumulativeMessages": 0,
+            "converged": false,
+            "title": "Round 0: Local Direct Knowledge Initialization",
+            "desc": "Routers initialize local tables with directly connected neighbors. Distant destinations have infinite cost.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 5,
+                "D": "Infinity",
+                "E": "Infinity"
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": "Infinity",
+                "E": "Infinity"
+              },
+              "C": {
+                "A": 5,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 1,
+            "messagesThisRound": 12,
+            "cumulativeMessages": 12,
+            "converged": false,
+            "title": "Round 1: Vector Advertisement Exchange",
+            "desc": "All 12 directed links transmit routing vectors. Routes updated across the network.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 8,
+                "E": 6
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 8,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 6,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 2,
+            "messagesThisRound": 12,
+            "cumulativeMessages": 24,
+            "converged": false,
+            "title": "Round 2: Vector Advertisement Exchange",
+            "desc": "All 12 directed links transmit routing vectors. Routes updated across the network.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 3,
+            "messagesThisRound": 12,
+            "cumulativeMessages": 36,
+            "converged": true,
+            "title": "Round 3: Stabilization & Convergence Verified",
+            "desc": "All 12 directed links exchange vectors. Zero costs change. Universal convergence reached.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          }
+        ],
+        "freshStart_LS": [
+          {
+            "round": 0,
+            "messagesThisRound": 0,
+            "cumulativeMessages": 0,
+            "converged": false,
+            "title": "Round 0: Direct Link-State Detection",
+            "desc": "Each router discovers and measures costs to direct neighbors, generating its initial local LSA.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 5,
+                "D": "Infinity",
+                "E": "Infinity"
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": "Infinity",
+                "E": "Infinity"
+              },
+              "C": {
+                "A": 5,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 1,
+            "messagesThisRound": 12,
+            "cumulativeMessages": 12,
+            "converged": false,
+            "title": "Round 1: Global LSA Flooding Wave",
+            "desc": "12 LSA transmission attempts. Routers receive and forward topology link advertisements.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 8,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 6,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 2,
+            "messagesThisRound": 20,
+            "cumulativeMessages": 32,
+            "converged": false,
+            "title": "Round 2: Global LSA Flooding Wave",
+            "desc": "20 LSA transmission attempts. Routers receive and forward topology link advertisements.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 3,
+            "messagesThisRound": 8,
+            "cumulativeMessages": 40,
+            "converged": true,
+            "title": "Round 3: Flooding Complete & Dijkstra SPF Re-computation",
+            "desc": "Frontiers empty after 8 final transmissions. Total 40 attempts. All routers execute Dijkstra SPF.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          }
+        ],
+        "recovery_DV": [
+          {
+            "round": 0,
+            "messagesThisRound": 0,
+            "cumulativeMessages": 0,
+            "converged": false,
+            "title": "Round 0: Link B\u2013D Severed (Cost 2)",
+            "desc": "Link B\u2013D fails. Routers B and D detect link loss. Routes utilizing B\u2013D are invalidated to infinity.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": "Infinity",
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 1,
+            "messagesThisRound": 12,
+            "cumulativeMessages": 12,
+            "converged": false,
+            "title": "Round 1: Poisoned Reverse Vector Advertisement (12 Messages)",
+            "desc": "All 12 surviving directed links exchange vectors. Node D discovers C (cost 3) and learns A (cost 6) and B (cost 4) via C.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 8,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 2,
+            "messagesThisRound": 12,
+            "cumulativeMessages": 24,
+            "converged": false,
+            "title": "Round 2: Route Optimization via Node C (12 Messages)",
+            "desc": "Node A refines route to D from 8 down to 6 via B-C-D. 12 messages exchanged across surviving links.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 3,
+            "messagesThisRound": 12,
+            "cumulativeMessages": 36,
+            "converged": true,
+            "title": "Round 3: Re-convergence Verified (Total 36 Messages)",
+            "desc": "Final vector exchange verifies zero further cost changes. Network is fully re-converged around alternate paths.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          }
+        ],
+        "recovery_LS": [
+          {
+            "round": 0,
+            "messagesThisRound": 0,
+            "cumulativeMessages": 0,
+            "converged": false,
+            "title": "Round 0: Link B\u2013D Failure Detected",
+            "desc": "Both endpoints B and D detect link B\u2013D failure. They invalidate link B\u2013D and prepare changed LSAs.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 4,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": "Infinity",
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": "Infinity",
+                "B": "Infinity",
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 1,
+            "messagesThisRound": 4,
+            "cumulativeMessages": 4,
+            "converged": false,
+            "title": "Round 1: Endpoints Originate Changed LSAs (4 Messages)",
+            "desc": "B sends changed LSA to A and C. D sends changed LSA to C and E. Total 4 transmission attempts.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 8,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 2,
+            "messagesThisRound": 8,
+            "cumulativeMessages": 12,
+            "converged": false,
+            "title": "Round 2: Flooding Changed LSAs Network-wide (8 Messages)",
+            "desc": "A, C, and E propagate the changed LSAs across remaining links. Total 8 transmission attempts.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          },
+          {
+            "round": 3,
+            "messagesThisRound": 4,
+            "cumulativeMessages": 16,
+            "converged": true,
+            "title": "Round 3: Flooding Complete (16 Total) & Dijkstra Re-computation",
+            "desc": "Frontier queue empty after 4 final transmissions (total 16 attempts). Each router runs Dijkstra SPF on the updated LSDB.",
+            "matrix": {
+              "A": {
+                "A": 0,
+                "B": 2,
+                "C": 3,
+                "D": 6,
+                "E": 4
+              },
+              "B": {
+                "A": 2,
+                "B": 0,
+                "C": 1,
+                "D": 4,
+                "E": 2
+              },
+              "C": {
+                "A": 3,
+                "B": 1,
+                "C": 0,
+                "D": 3,
+                "E": 1
+              },
+              "D": {
+                "A": 6,
+                "B": 4,
+                "C": 3,
+                "D": 0,
+                "E": 2
+              },
+              "E": {
+                "A": 4,
+                "B": 2,
+                "C": 1,
+                "D": 2,
+                "E": 0
+              }
+            }
+          }
+        ]
+      }
+    };
+
+    /* ==========================================================================
+       UTILITY FUNCTIONS
+       ========================================================================== */
+    function formatNumber(num) {
+      return num === Infinity ? "∞" : num.toString();
+    }
+
+    /* ==========================================================================
+       NAVIGATION & SCROLL
+       ========================================================================== */
+    function initNavigation() {
+      const progressBar = document.getElementById('scroll-progress');
+      const navLinks = document.querySelectorAll('.nav-links a');
+      const mobileToggle = document.getElementById('mobile-toggle');
+      const navMenu = document.querySelector('.nav-links');
+
+      // Scroll Progress Bar
+      window.addEventListener('scroll', () => {
+        const winScroll = document.documentElement.scrollTop || document.body.scrollTop;
+        const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        const scrolled = (winScroll / height) * 100;
+        if (progressBar) progressBar.style.width = scrolled + '%';
+      }, { passive: true });
+
+      // Mobile Menu Toggle
+      if (mobileToggle && navMenu) {
+        mobileToggle.addEventListener('click', () => {
+          const isOpen = navMenu.classList.toggle('mobile-open');
+          mobileToggle.setAttribute('aria-expanded', isOpen);
+        });
+        navLinks.forEach(link => {
+          link.addEventListener('click', () => {
+            navMenu.classList.remove('mobile-open');
+            mobileToggle.setAttribute('aria-expanded', 'false');
+          });
+        });
+      }
+
+      // Active Nav Link Observer
+      const sections = document.querySelectorAll('section[id]');
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const id = entry.target.getAttribute('id');
+            navLinks.forEach(link => {
+              if (link.getAttribute('href') === '#' + id) {
+                link.classList.add('active');
+              } else {
+                link.classList.remove('active');
+              }
+            });
+          }
+        });
+      }, { rootMargin: '-20% 0px -70% 0px' });
+
+      sections.forEach(sec => observer.observe(sec));
+    }
+
+    /* ==========================================================================
+       HERO CANVAS NETWORK VISUALIZER
+       ========================================================================== */
+    function initHeroCanvas() {
+      const canvas = document.getElementById('hero-canvas');
+      if (!canvas) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      const ctx = canvas.getContext('2d');
+      let width, height;
+      let animFrameId;
+      let isVisible = true;
+
+      // Match 5 nodes from SITE_DATA
+      const nodes = [
+        { label: "A", x: 0.18, y: 0.50, vx: 0.0003, vy: 0.0002 },
+        { label: "B", x: 0.38, y: 0.28, vx: -0.0002, vy: 0.0003 },
+        { label: "C", x: 0.48, y: 0.68, vx: 0.0002, vy: -0.0002 },
+        { label: "D", x: 0.72, y: 0.32, vx: -0.0003, vy: 0.0002 },
+        { label: "E", x: 0.82, y: 0.70, vx: 0.0002, vy: -0.0003 }
+      ];
+
+      // Fixed link topology matching network_config.py
+      const links = [
+        [0, 1], [0, 2], [1, 2], [1, 3], [2, 3], [2, 4], [3, 4]
+      ];
+
+      // Travelling packets
+      const packets = [
+        { link: 0, progress: 0.1, speed: 0.004, color: "#22D3EE" },
+        { link: 2, progress: 0.6, speed: 0.003, color: "#22D3EE" },
+        { link: 3, progress: 0.3, speed: 0.005, color: "#A78BFA" },
+        { link: 5, progress: 0.8, speed: 0.004, color: "#A78BFA" }
+      ];
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = canvas.parentElement.offsetWidth;
+        height = canvas.parentElement.offsetHeight;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr);
+      }
+
+      function draw() {
+        if (!isVisible) return;
+        ctx.clearRect(0, 0, width, height);
+
+        // Update node positions with gentle drift
+        nodes.forEach(n => {
+          n.x += n.vx;
+          n.y += n.vy;
+          if (n.x < 0.1 || n.x > 0.9) n.vx *= -1;
+          if (n.y < 0.2 || n.y > 0.8) n.vy *= -1;
+        });
+
+        // Draw Links
+        links.forEach(([i, j]) => {
+          const n1 = nodes[i];
+          const n2 = nodes[j];
+          ctx.beginPath();
+          ctx.moveTo(n1.x * width, n1.y * height);
+          ctx.lineTo(n2.x * width, n2.y * height);
+          ctx.strokeStyle = "rgba(56, 189, 248, 0.14)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        });
+
+        // Draw Travelling Packets (Transform and opacity)
+        packets.forEach(p => {
+          p.progress += p.speed;
+          if (p.progress > 1) p.progress = 0;
+
+          const [i, j] = links[p.link];
+          const x = nodes[i].x * width + (nodes[j].x * width - nodes[i].x * width) * p.progress;
+          const y = nodes[i].y * height + (nodes[j].y * height - nodes[i].y * height) * p.progress;
+
+          ctx.beginPath();
+          ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        });
+
+        // Draw Nodes
+        nodes.forEach(n => {
+          const cx = n.x * width;
+          const cy = n.y * height;
+
+          ctx.beginPath();
+          ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+          ctx.fillStyle = "#10182A";
+          ctx.strokeStyle = "rgba(34, 211, 238, 0.6)";
+          ctx.lineWidth = 2;
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#F8FAFC";
+          ctx.font = "600 12px 'IBM Plex Sans'";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(n.label, cx, cy);
+        });
+
+        animFrameId = requestAnimationFrame(draw);
+      }
+
+      window.addEventListener('resize', resize);
+      resize();
+      draw();
+
+      // Pause when offscreen or tab hidden
+      const obs = new IntersectionObserver(([entry]) => {
+        isVisible = entry.isIntersecting;
+        if (isVisible) draw();
+      });
+      obs.observe(canvas);
+
+      document.addEventListener('visibilitychange', () => {
+        isVisible = !document.hidden;
+        if (isVisible) draw();
+      });
+    }
+
+    /* ==========================================================================
+       TOPOLOGY SVG & DYNAMIC ROUTING TABLES
+       ========================================================================== */
+    function initTopology() {
+      const svg = document.getElementById('topology-svg');
+      const toggleBtn = document.getElementById('btn-toggle-failure');
+      const toggleText = document.getElementById('btn-toggle-text');
+      const statusBadge = document.getElementById('link-status-badge');
+      const statusDot = document.getElementById('link-status-dot');
+      const statusText = document.getElementById('link-status-text');
+      const tableTitle = document.getElementById('table-node-title');
+      const tableBadge = document.getElementById('table-state-badge');
+      const tbody = document.getElementById('node-routing-tbody');
+
+      let isFailed = false;
+      let selectedNode = "A";
+
+      // Fixed 2D layout coordinates for 700x320 viewport
+      const coords = {
+        A: { x: 95, y: 160 },
+        B: { x: 240, y: 80 },
+        C: { x: 350, y: 240 },
+        D: { x: 460, y: 80 },
+        E: { x: 605, y: 240 }
+      };
+
+      function renderTopologySVG() {
+        if (!svg) return;
+        svg.innerHTML = '';
+
+        // Draw Links
+        SITE_DATA.topology.links.forEach(link => {
+          const p1 = coords[link.source];
+          const p2 = coords[link.target];
+          const isBD = (link.source === "B" && link.target === "D") || (link.source === "D" && link.target === "B");
+          const isSevered = isBD && isFailed;
+
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', p1.x);
+          line.setAttribute('y1', p1.y);
+          line.setAttribute('x2', p2.x);
+          line.setAttribute('y2', p2.y);
+          line.setAttribute('class', `topo-link ${isSevered ? 'severed' : ''}`);
+          line.setAttribute('id', `link-${link.source}-${link.target}`);
+          g.appendChild(line);
+
+          // Cost Badge positioned at link midpoint
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+
+          const badgeG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          badgeG.setAttribute('class', 'topo-cost-badge');
+
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', midX - 16);
+          rect.setAttribute('y', midY - 11);
+          rect.setAttribute('width', 32);
+          rect.setAttribute('height', 22);
+
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', midX);
+          text.setAttribute('y', midY);
+          text.textContent = isSevered ? "✕" : link.cost;
+          if (isSevered) {
+            text.setAttribute('fill', 'var(--status-danger)');
+            rect.setAttribute('stroke', 'var(--status-danger)');
+          }
+
+          badgeG.appendChild(rect);
+          badgeG.appendChild(text);
+          g.appendChild(badgeG);
+
+          svg.appendChild(g);
+        });
+
+        // Draw Nodes
+        SITE_DATA.topology.nodes.forEach(nodeId => {
+          const pt = coords[nodeId];
+          const isSelected = nodeId === selectedNode;
+
+          const nodeG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          nodeG.setAttribute('class', 'topo-node');
+          nodeG.setAttribute('data-node', nodeId);
+          nodeG.style.cursor = 'pointer';
+
+          const circleOuter = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circleOuter.setAttribute('cx', pt.x);
+          circleOuter.setAttribute('cy', pt.y);
+          circleOuter.setAttribute('r', 22);
+          circleOuter.setAttribute('class', 'outer');
+          if (isSelected) {
+            circleOuter.setAttribute('stroke', '#FFFFFF');
+            circleOuter.setAttribute('stroke-width', '3');
+          }
+
+          const circleInner = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circleInner.setAttribute('cx', pt.x);
+          circleInner.setAttribute('cy', pt.y);
+          circleInner.setAttribute('r', 17);
+          circleInner.setAttribute('class', 'inner');
+
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', pt.x);
+          text.setAttribute('y', pt.y);
+          text.textContent = nodeId;
+
+          nodeG.appendChild(circleOuter);
+          nodeG.appendChild(circleInner);
+          nodeG.appendChild(text);
+
+          nodeG.addEventListener('click', () => {
+            selectedNode = nodeId;
+            renderTopologySVG();
+            updateRoutingTableDisplay();
+          });
+
+          svg.appendChild(nodeG);
+        });
+      }
+
+      function updateRoutingTableDisplay() {
+        if (!tbody || !tableTitle) return;
+        tableTitle.textContent = `Router ${selectedNode} Routing Table`;
+        tableBadge.textContent = isFailed ? "Recovered State (Post-Failure)" : "Baseline State";
+        tableBadge.className = isFailed ? "badge badge-warning" : "badge badge-dv";
+
+        const currentTables = isFailed ? SITE_DATA.routingTables.recovered : SITE_DATA.routingTables.baseline;
+        const rows = currentTables[selectedNode] || [];
+
+        tbody.innerHTML = '';
+        rows.forEach(r => {
+          const tr = document.createElement('tr');
+          if (r.changed && isFailed) {
+            tr.classList.add('cell-flash');
+          }
+
+          const statusHtml = r.changed && isFailed
+            ? `<span class="badge badge-warning" style="font-size:0.75rem;">Rerouted</span>`
+            : `<span class="badge badge-success" style="font-size:0.75rem;">Optimal</span>`;
+
+          tr.innerHTML = `
+            <td><strong>${r.dest}</strong></td>
+            <td><span class="mono" style="font-weight:600; color:${r.changed && isFailed ? 'var(--status-warning)' : 'var(--color-text-primary)'}">${formatNumber(r.cost)}</span></td>
+            <td><span class="mono">${r.nextHop ? r.nextHop : '-'}</span></td>
+            <td>${statusHtml}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+          isFailed = !isFailed;
+          if (isFailed) {
+            statusDot.style.background = 'var(--status-danger)';
+            statusText.textContent = 'Link B–D: SEVERED (Failed)';
+            statusBadge.className = 'badge badge-danger';
+            toggleText.textContent = 'Restore Link B–D (Cost 2)';
+          } else {
+            statusDot.style.background = 'var(--status-success)';
+            statusText.textContent = 'Link B–D: ACTIVE (Cost 2)';
+            statusBadge.className = 'badge badge-success';
+            toggleText.textContent = 'Inject Failure (Cut B–D)';
+          }
+          renderTopologySVG();
+          updateRoutingTableDisplay();
+        });
+      }
+
+      renderTopologySVG();
+      updateRoutingTableDisplay();
+    }
+
+    /* ==========================================================================
+       SIMULATION ENGINE WALKTHROUGH
+       ========================================================================== */
+    function initSimulationEngine() {
+      const scenarioSelect = document.getElementById('sim-scenario-select');
+      const protoDvBtn = document.getElementById('sim-proto-dv');
+      const protoLsBtn = document.getElementById('sim-proto-ls');
+      const btnReset = document.getElementById('sim-btn-reset');
+      const btnPrev = document.getElementById('sim-btn-prev');
+      const btnPlay = document.getElementById('sim-btn-play');
+      const btnNext = document.getElementById('sim-btn-next');
+      const speedSelect = document.getElementById('sim-speed-select');
+      const scrubber = document.getElementById('sim-scrubber');
+      const hudRound = document.getElementById('hud-round');
+      const hudMessages = document.getElementById('hud-messages');
+      const hudStateContainer = document.getElementById('hud-state-container');
+      const narrativeTitle = document.getElementById('sim-narrative-title');
+      const narrativeDesc = document.getElementById('sim-narrative-desc');
+      const matrixTbody = document.getElementById('sim-matrix-tbody');
+      const playIcon = document.getElementById('play-icon');
+
+      const simSvg = document.getElementById('sim-topology-svg');
+      const simLinkBadge = document.getElementById('sim-topo-link-badge');
+      const simLinkDot = document.getElementById('sim-topo-link-dot');
+      const simLinkText = document.getElementById('sim-topo-link-text');
+      const simAnimBadge = document.getElementById('sim-anim-status-badge');
+      const simAnimText = document.getElementById('sim-anim-status-text');
+      const simRoundMsgCount = document.getElementById('sim-round-msg-count');
+      const simModeLabel = document.getElementById('sim-active-mode-label');
+
+      let currentProtocol = "DV";
+      let currentRound = 0;
+      let isPlaying = false;
+      let playTimer = null;
+      let playSpeed = 1200;
+      let packetAnimFrame = null;
+      let packetProgress = 0;
+
+      // 5-Node topology coordinates matching network_config.py (700x320 viewport)
+      const coords = {
+        A: { x: 95, y: 160 },
+        B: { x: 240, y: 80 },
+        C: { x: 350, y: 240 },
+        D: { x: 460, y: 80 },
+        E: { x: 605, y: 240 }
+      };
+
+      // Correctly retrieves real steps based on BOTH scenario AND protocol!
+      function getActiveSteps() {
+        const scenario = scenarioSelect ? scenarioSelect.value : "baseline";
+        const key = `${scenario}_${currentProtocol}`;
+        return SITE_DATA.simulationSteps[key] || SITE_DATA.simulationSteps.baseline_DV;
+      }
+
+      function renderSimTopologySVG(step) {
+        if (!simSvg) return;
+        simSvg.innerHTML = '';
+
+        const scenario = scenarioSelect ? scenarioSelect.value : "baseline";
+        const isSeveredScenario = (scenario === "recovery" || scenario === "freshStart");
+        const themeColor = currentProtocol === "DV" ? "var(--protocol-dv)" : "var(--protocol-ls)";
+
+        // Update Link B-D Status Badge in Simulation Card
+        if (simLinkBadge && simLinkDot && simLinkText) {
+          if (isSeveredScenario) {
+            simLinkDot.style.background = "var(--status-danger)";
+            simLinkText.textContent = "Link B–D: SEVERED (Failed)";
+            simLinkBadge.className = "badge badge-danger";
+          } else {
+            simLinkDot.style.background = "var(--status-success)";
+            simLinkText.textContent = "Link B–D: ACTIVE (Cost 2)";
+            simLinkBadge.className = "badge badge-success";
+          }
+        }
+
+        // Draw Links
+        SITE_DATA.topology.links.forEach(link => {
+          const p1 = coords[link.source];
+          const p2 = coords[link.target];
+          const isBD = (link.source === "B" && link.target === "D") || (link.source === "D" && link.target === "B");
+          const isSevered = isBD && isSeveredScenario;
+
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', p1.x);
+          line.setAttribute('y1', p1.y);
+          line.setAttribute('x2', p2.x);
+          line.setAttribute('y2', p2.y);
+
+          let lineClass = `topo-link ${isSevered ? 'severed' : ''}`;
+          // In LS Round 3 (converged), highlight Dijkstra shortest-path tree edges!
+          if (step.converged && currentProtocol === "LS" && !isSevered) {
+            lineClass += ' highlight-path';
+          }
+          line.setAttribute('class', lineClass);
+          if (step.converged && currentProtocol === "LS" && !isSevered) {
+            line.style.stroke = "var(--protocol-ls)";
+          }
+          g.appendChild(line);
+
+          // Cost Badge
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+
+          const badgeG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          badgeG.setAttribute('class', 'topo-cost-badge');
+
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', midX - 16);
+          rect.setAttribute('y', midY - 11);
+          rect.setAttribute('width', 32);
+          rect.setAttribute('height', 22);
+
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', midX);
+          text.setAttribute('y', midY);
+          text.textContent = isSevered ? "✕" : link.cost;
+          if (isSevered) {
+            text.setAttribute('fill', 'var(--status-danger)');
+            rect.setAttribute('stroke', 'var(--status-danger)');
+          }
+
+          badgeG.appendChild(rect);
+          badgeG.appendChild(text);
+          g.appendChild(badgeG);
+
+          simSvg.appendChild(g);
+        });
+
+        // Group for Animated Packets
+        const packetLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        packetLayer.setAttribute('id', 'sim-packet-layer');
+        simSvg.appendChild(packetLayer);
+
+        // Draw Nodes
+        SITE_DATA.topology.nodes.forEach(nodeId => {
+          const pt = coords[nodeId];
+
+          const nodeG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          nodeG.setAttribute('class', 'topo-node');
+
+          // Pulse ring when active round > 0
+          if (step.round > 0 && !step.converged) {
+            const pulseCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            pulseCircle.setAttribute('cx', pt.x);
+            pulseCircle.setAttribute('cy', pt.y);
+            pulseCircle.setAttribute('r', 27);
+            pulseCircle.setAttribute('fill', 'none');
+            pulseCircle.setAttribute('stroke', currentProtocol === "DV" ? "var(--protocol-dv)" : "var(--protocol-ls)");
+            pulseCircle.setAttribute('stroke-width', '1.5');
+            pulseCircle.setAttribute('opacity', '0.4');
+            nodeG.appendChild(pulseCircle);
+          }
+
+          const circleOuter = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circleOuter.setAttribute('cx', pt.x);
+          circleOuter.setAttribute('cy', pt.y);
+          circleOuter.setAttribute('r', 22);
+          circleOuter.setAttribute('class', 'outer');
+          circleOuter.setAttribute('stroke', currentProtocol === "DV" ? "var(--protocol-dv)" : "var(--protocol-ls)");
+
+          const circleInner = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circleInner.setAttribute('cx', pt.x);
+          circleInner.setAttribute('cy', pt.y);
+          circleInner.setAttribute('r', 17);
+          circleInner.setAttribute('class', 'inner');
+          circleInner.setAttribute('fill', currentProtocol === "DV" ? "rgba(34, 211, 238, 0.15)" : "rgba(167, 139, 250, 0.15)");
+
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', pt.x);
+          text.setAttribute('y', pt.y);
+          text.textContent = nodeId;
+
+          nodeG.appendChild(circleOuter);
+          nodeG.appendChild(circleInner);
+          nodeG.appendChild(text);
+
+          simSvg.appendChild(nodeG);
+        });
+
+        // Trigger packet wave animation if round > 0 and not reduced-motion
+        if (step.round > 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          animatePacketsAlongLinks(step);
+        }
+      }
+
+      function animatePacketsAlongLinks(step) {
+        const layer = document.getElementById('sim-packet-layer');
+        if (!layer) return;
+        layer.innerHTML = '';
+
+        const scenario = scenarioSelect ? scenarioSelect.value : "baseline";
+        const isSeveredScenario = (scenario === "recovery" || scenario === "freshStart");
+        const activeColor = currentProtocol === "DV" ? "#22D3EE" : "#A78BFA";
+
+        // Determine which links are active for transmission
+        const activeLinks = SITE_DATA.topology.links.filter(l => {
+          const isBD = (l.source === "B" && l.target === "D") || (l.source === "D" && l.target === "B");
+          return !(isBD && isSeveredScenario);
+        });
+
+        // Animate packets traversing links
+        if (packetAnimFrame) cancelAnimationFrame(packetAnimFrame);
+        let startTs = null;
+        const animDuration = playSpeed * 0.9;
+
+        function stepPacket(timestamp) {
+          if (!startTs) startTs = timestamp;
+          const elapsed = timestamp - startTs;
+          const progress = Math.min(elapsed / animDuration, 1);
+
+          layer.innerHTML = '';
+
+          activeLinks.forEach(link => {
+            const p1 = coords[link.source];
+            const p2 = coords[link.target];
+
+            // Forward packet (source -> target)
+            const x1 = p1.x + (p2.x - p1.x) * progress;
+            const y1 = p1.y + (p2.y - p1.y) * progress;
+            const c1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            c1.setAttribute('cx', x1);
+            c1.setAttribute('cy', y1);
+            c1.setAttribute('r', 4.5);
+            c1.setAttribute('fill', activeColor);
+            c1.setAttribute('opacity', progress < 0.1 || progress > 0.9 ? 0.4 : 1);
+            layer.appendChild(c1);
+
+            // Reverse packet for DV (target -> source)
+            if (currentProtocol === "DV") {
+              const x2 = p2.x + (p1.x - p2.x) * progress;
+              const y2 = p2.y + (p1.y - p2.y) * progress;
+              const c2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+              c2.setAttribute('cx', x2);
+              c2.setAttribute('cy', y2);
+              c2.setAttribute('r', 4.5);
+              c2.setAttribute('fill', activeColor);
+              c2.setAttribute('opacity', progress < 0.1 || progress > 0.9 ? 0.4 : 1);
+              layer.appendChild(c2);
+            }
+          });
+
+          if (progress < 1) {
+            packetAnimFrame = requestAnimationFrame(stepPacket);
+          }
+        }
+
+        packetAnimFrame = requestAnimationFrame(stepPacket);
+      }
+
+      function updateSimulationUI() {
+        const steps = getActiveSteps();
+        const step = steps[currentRound] || steps[0];
+
+        // Update Round & HUD with accurate, verified cumulative attempts!
+        if (hudRound) hudRound.textContent = `Round ${step.round} / 3`;
+        if (hudMessages) hudMessages.textContent = `${step.cumulativeMessages} attempts`;
+        if (simRoundMsgCount) simRoundMsgCount.textContent = step.messagesThisRound;
+        if (scrubber) scrubber.value = currentRound;
+
+        // Mode Label
+        if (simModeLabel) {
+          simModeLabel.textContent = currentProtocol === "DV" ? "Mode: Distance Vector Updates (Bellman–Ford)" : "Mode: Link State Flooding (Dijkstra SPF)";
+          simModeLabel.style.color = currentProtocol === "DV" ? "var(--protocol-dv)" : "var(--protocol-ls)";
+        }
+
+        // Animation status badge
+        if (simAnimBadge && simAnimText) {
+          if (step.converged) {
+            simAnimBadge.className = "badge badge-success";
+            simAnimText.textContent = "Simulation Converged";
+          } else if (isPlaying) {
+            simAnimBadge.className = currentProtocol === "DV" ? "badge badge-dv" : "badge badge-ls";
+            simAnimText.textContent = "Propagating Updates...";
+          } else {
+            simAnimBadge.className = "badge badge-warning";
+            simAnimText.textContent = `Round ${step.round} Paused`;
+          }
+        }
+
+        // Convergence status badge
+        if (hudStateContainer) {
+          if (step.converged) {
+            hudStateContainer.innerHTML = `
+              <span class="badge badge-success">
+                <span style="width:7px; height:7px; border-radius:50%; background:var(--status-success);"></span>
+                Converged (PASS)
+              </span>
+            `;
+          } else if (step.round === 0) {
+            hudStateContainer.innerHTML = `
+              <span class="badge badge-warning">
+                <span style="width:7px; height:7px; border-radius:50%; background:var(--status-warning);"></span>
+                Initializing
+              </span>
+            `;
+          } else {
+            hudStateContainer.innerHTML = `
+              <span class="badge ${currentProtocol === 'DV' ? 'badge-dv' : 'badge-ls'}">
+                <span style="width:7px; height:7px; border-radius:50%; background:${currentProtocol === 'DV' ? 'var(--protocol-dv)' : 'var(--protocol-ls)'};"></span>
+                ${currentProtocol === 'DV' ? 'Propagating Updates' : 'Flooding LSAs'}
+              </span>
+            `;
+          }
+        }
+
+        // Narrative
+        if (narrativeTitle) narrativeTitle.textContent = step.title;
+        if (narrativeDesc) narrativeDesc.textContent = step.desc;
+
+        // Render Animated Topology
+        renderSimTopologySVG(step);
+
+        // Matrix Table
+        if (matrixTbody) {
+          matrixTbody.innerHTML = '';
+          SITE_DATA.topology.nodes.forEach(src => {
+            const tr = document.createElement('tr');
+            let rowHtml = `<td><strong>Router ${src}</strong></td>`;
+            SITE_DATA.topology.nodes.forEach(dst => {
+              const val = step.matrix[src] ? step.matrix[src][dst] : "Infinity";
+              const formatted = formatNumber(val === "Infinity" ? Infinity : val);
+              rowHtml += `<td><span class="mono" style="font-weight:500;">${formatted}</span></td>`;
+            });
+            tr.innerHTML = rowHtml;
+            matrixTbody.appendChild(tr);
+          });
+        }
+
+        // Disable buttons at boundaries
+        if (btnPrev) btnPrev.disabled = currentRound === 0;
+        if (btnNext) btnNext.disabled = currentRound >= steps.length - 1;
+      }
+
+      function stopPlayback() {
+        isPlaying = false;
+        if (playTimer) clearInterval(playTimer);
+        playTimer = null;
+        if (packetAnimFrame) cancelAnimationFrame(packetAnimFrame);
+        if (playIcon) {
+          playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+        }
+        if (simAnimBadge && simAnimText) {
+          const steps = getActiveSteps();
+          const step = steps[currentRound] || steps[0];
+          if (!step.converged) {
+            simAnimBadge.className = "badge badge-warning";
+            simAnimText.textContent = `Round ${step.round} Paused`;
+          }
+        }
+      }
+
+      function startPlayback() {
+        const steps = getActiveSteps();
+        if (currentRound >= steps.length - 1) {
+          currentRound = 0;
+        }
+        isPlaying = true;
+        if (playIcon) {
+          playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+        }
+        updateSimulationUI();
+        playTimer = setInterval(() => {
+          if (currentRound < steps.length - 1) {
+            currentRound++;
+            updateSimulationUI();
+          } else {
+            stopPlayback();
+          }
+        }, playSpeed);
+      }
+
+      // Event Listeners
+      if (scenarioSelect) {
+        scenarioSelect.addEventListener('change', () => {
+          currentRound = 0;
+          stopPlayback();
+          updateSimulationUI();
+        });
+      }
+
+      if (protoDvBtn && protoLsBtn) {
+        protoDvBtn.addEventListener('click', () => {
+          currentProtocol = "DV";
+          protoDvBtn.classList.add('active');
+          protoLsBtn.classList.remove('active');
+          currentRound = 0;
+          stopPlayback();
+          updateSimulationUI();
+        });
+
+        protoLsBtn.addEventListener('click', () => {
+          currentProtocol = "LS";
+          protoLsBtn.classList.add('active');
+          protoDvBtn.classList.remove('active');
+          currentRound = 0;
+          stopPlayback();
+          updateSimulationUI();
+        });
+      }
+
+      if (btnPlay) {
+        btnPlay.addEventListener('click', () => {
+          if (isPlaying) stopPlayback();
+          else startPlayback();
+        });
+      }
+
+      if (btnNext) {
+        btnNext.addEventListener('click', () => {
+          stopPlayback();
+          const steps = getActiveSteps();
+          if (currentRound < steps.length - 1) {
+            currentRound++;
+            updateSimulationUI();
+          }
+        });
+      }
+
+      if (btnPrev) {
+        btnPrev.addEventListener('click', () => {
+          stopPlayback();
+          if (currentRound > 0) {
+            currentRound--;
+            updateSimulationUI();
+          }
+        });
+      }
+
+      if (btnReset) {
+        btnReset.addEventListener('click', () => {
+          stopPlayback();
+          currentRound = 0;
+          updateSimulationUI();
+        });
+      }
+
+      if (scrubber) {
+        scrubber.addEventListener('input', (e) => {
+          stopPlayback();
+          currentRound = parseInt(e.target.value, 10);
+          updateSimulationUI();
+        });
+      }
+
+      if (speedSelect) {
+        speedSelect.addEventListener('change', (e) => {
+          playSpeed = parseInt(e.target.value, 10);
+          if (isPlaying) {
+            stopPlayback();
+            startPlayback();
+          }
+        });
+      }
+
+      updateSimulationUI();
+    }
+
+    /* ==========================================================================
+       RESULTS TABLE & CHART.JS CONTROLLER
+       ========================================================================== */
+    function initResultsAndCharts() {
+      const resultsTbody = document.getElementById('results-tbody');
+      const tabs = document.querySelectorAll('.tab-btn');
+      const indicator = document.getElementById('results-tab-indicator');
+
+      // Populate Empirical Results Table strictly from SITE_DATA.measuredResults
+      function renderResultsTable(filter) {
+        if (!resultsTbody) return;
+        resultsTbody.innerHTML = '';
+
+        SITE_DATA.measuredResults.forEach(r => {
+          if (filter !== 'all' && r.algorithm !== filter) return;
+
+          const tr = document.createElement('tr');
+          const isRecoveryLS = r.scenario === "Recovery after failure" && r.algorithm === "LS";
+          const descNote = isRecoveryLS
+            ? `${r.messageType}*`
+            : r.messageType;
+
+          tr.innerHTML = `
+            <td><strong>${r.scenario}</strong></td>
+            <td><span class="badge ${r.algorithm === 'DV' ? 'badge-dv' : 'badge-ls'}">${r.algorithm}</span></td>
+            <td><span class="mono">${r.rounds}</span></td>
+            <td><span class="mono" style="font-weight:600; color:${r.algorithm === 'DV' ? 'var(--protocol-dv)' : 'var(--protocol-ls)'}">${r.messageCount}</span></td>
+            <td style="font-size:0.85rem;">${descNote}</td>
+            <td><span class="badge badge-success"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg> ${r.distanceValidation}</span></td>
+            <td><span class="badge badge-success"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg> ${r.nextHopValidation}</span></td>
+          `;
+          resultsTbody.appendChild(tr);
+        });
+      }
+
+      // Tab switcher
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+          });
+          tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
+
+          if (indicator) {
+            indicator.style.left = tab.offsetLeft + 'px';
+            indicator.style.width = tab.offsetWidth + 'px';
+          }
+
+          const filter = tab.getAttribute('data-filter');
+          renderResultsTable(filter);
+        });
+      });
+
+      renderResultsTable('all');
+
+      // Initialize Chart.js with IntersectionObserver
+      let chartsInitialized = false;
+
+      function renderCharts() {
+        if (chartsInitialized) return;
+        chartsInitialized = true;
+
+        const ctxOverhead = document.getElementById('chart-overhead');
+        const ctxRounds = document.getElementById('chart-rounds');
+
+        if (ctxOverhead && typeof Chart !== 'undefined') {
+          new Chart(ctxOverhead, {
+            type: 'bar',
+            data: {
+              labels: ['Baseline Network', 'Fresh Start after Failure', 'Recovery after Failure'],
+              datasets: [
+                {
+                  label: 'Distance Vector (DV)',
+                  data: [42, 36, 36],
+                  backgroundColor: 'rgba(34, 211, 238, 0.75)',
+                  borderColor: '#22D3EE',
+                  borderWidth: 1.5,
+                  borderRadius: 6
+                },
+                {
+                  label: 'Link State (LS)',
+                  data: [50, 40, 16],
+                  backgroundColor: 'rgba(167, 139, 250, 0.75)',
+                  borderColor: '#A78BFA',
+                  borderWidth: 1.5,
+                  borderRadius: 6
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  labels: { color: '#F8FAFC', font: { family: "'IBM Plex Sans', sans-serif" } }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: (context) => ` ${context.dataset.label}: ${context.raw} message attempts`
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: { color: '#94A3B8', font: { family: "'IBM Plex Sans', sans-serif" } },
+                  grid: { color: 'rgba(56, 189, 248, 0.08)' }
+                },
+                y: {
+                  beginAtZero: true,
+                  max: 60,
+                  ticks: { color: '#94A3B8', font: { family: "'JetBrains Mono', monospace" } },
+                  grid: { color: 'rgba(56, 189, 248, 0.08)' },
+                  title: { display: true, text: 'Total Message Attempts', color: '#94A3B8' }
+                }
+              }
+            }
+          });
+        }
+
+        if (ctxRounds && typeof Chart !== 'undefined') {
+          new Chart(ctxRounds, {
+            type: 'bar',
+            data: {
+              labels: ['Baseline Network', 'Fresh Start after Failure', 'Recovery after Failure'],
+              datasets: [
+                {
+                  label: 'Distance Vector (DV)',
+                  data: [3, 3, 3],
+                  backgroundColor: 'rgba(34, 211, 238, 0.75)',
+                  borderColor: '#22D3EE',
+                  borderWidth: 1.5,
+                  borderRadius: 6
+                },
+                {
+                  label: 'Link State (LS)',
+                  data: [3, 3, 3],
+                  backgroundColor: 'rgba(167, 139, 250, 0.75)',
+                  borderColor: '#A78BFA',
+                  borderWidth: 1.5,
+                  borderRadius: 6
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  labels: { color: '#F8FAFC', font: { family: "'IBM Plex Sans', sans-serif" } }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: (context) => ` ${context.dataset.label}: ${context.raw} convergence rounds`
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: { color: '#94A3B8', font: { family: "'IBM Plex Sans', sans-serif" } },
+                  grid: { color: 'rgba(56, 189, 248, 0.08)' }
+                },
+                y: {
+                  beginAtZero: true,
+                  max: 5,
+                  ticks: { stepSize: 1, color: '#94A3B8', font: { family: "'JetBrains Mono', monospace" } },
+                  grid: { color: 'rgba(56, 189, 248, 0.08)' },
+                  title: { display: true, text: 'Rounds to Convergence', color: '#94A3B8' }
+                }
+              }
+            }
+          });
+        }
+      }
+
+      const resultsSection = document.getElementById('results');
+      if (resultsSection) {
+        const chartObserver = new IntersectionObserver(([entry]) => {
+          if (entry.isIntersecting) {
+            renderCharts();
+            chartObserver.disconnect();
+          }
+        }, { threshold: 0.15 });
+        chartObserver.observe(resultsSection);
+      }
+    }
+
+    /* ==========================================================================
+       DELIVERABLES & VIDEO EMBED
+       ========================================================================== */
+    function initDeliverablesAndVideo() {
+      // Setup deliverable cards based on SITE_DATA.links
+      const mappings = [
+        { id: 'deliv-sim', link: SITE_DATA.links.sourceCode, name: 'Executable Simulation' },
+        { id: 'deliv-csv', link: SITE_DATA.links.csvData, name: 'Empirical CSV' },
+        { id: 'deliv-graphs', link: SITE_DATA.links.overheadGraph, name: 'Generated Graphs' },
+        { id: 'deliv-video', link: SITE_DATA.links.video, name: 'Narration Video' },
+        { id: 'deliv-config', link: SITE_DATA.links.networkConfig, name: 'Network Config' },
+        { id: 'deliv-report', link: SITE_DATA.links.reportPdf, name: 'Technical Report' }
+      ];
+
+      mappings.forEach(m => {
+        const btn = document.getElementById(m.id);
+        if (!btn) return;
+
+        if (m.link && m.link.trim() !== "") {
+          btn.href = m.link;
+          btn.rel = "noopener noreferrer";
+          btn.classList.remove('btn-disabled');
+          btn.removeAttribute('aria-disabled');
+          btn.innerHTML = `<span>View ${m.name}</span>`;
+        } else {
+          btn.href = "javascript:void(0)";
+          btn.classList.add('btn-disabled');
+          btn.setAttribute('aria-disabled', 'true');
+          btn.innerHTML = `<span>🔒 Link Coming Soon</span>`;
+        }
+      });
+
+      // Video Embed Facade
+      const videoWrapper = document.getElementById('video-wrapper');
+      if (videoWrapper && SITE_DATA.links.video && SITE_DATA.links.video.trim() !== "") {
+        // Embed responsive youtube-nocookie
+        const ytId = extractYouTubeID(SITE_DATA.links.video);
+        if (ytId) {
+          videoWrapper.innerHTML = `
+            <iframe 
+              width="100%" 
+              height="100%" 
+              src="https://www.youtube-nocookie.com/embed/${ytId}?rel=0" 
+              title="NetVista 3D Presentation Video" 
+              frameborder="0" 
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+              allowfullscreen>
+            </iframe>
+          `;
+        }
+      }
+    }
+
+    function extractYouTubeID(url) {
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+      const match = url.match(regExp);
+      return (match && match[2].length === 11) ? match[2] : null;
+    }
+
+    /* ==========================================================================
+       INITIALIZATION
+       ========================================================================== */
+    document.addEventListener('DOMContentLoaded', () => {
+      initNavigation();
+      initHeroCanvas();
+      initTopology();
+      initSimulationEngine();
+      initResultsAndCharts();
+      initDeliverablesAndVideo();
+    });
+  </script>
+
+</body>
+
+</html>

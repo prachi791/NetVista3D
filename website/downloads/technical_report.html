@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technical Report - NetVista 3D | Prachi Modi (25CS045)</title>
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --secondary: #0f766e;
+            --text: #1f2937;
+            --text-light: #4b5563;
+            --bg: #ffffff;
+            --bg-alt: #f8fafc;
+            --border: #e2e8f0;
+            --accent: #2563eb;
+            --danger: #dc2626;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: #f1f5f9;
+            margin: 0;
+            padding: 30px 15px;
+        }
+
+        .report-container {
+            max-width: 880px;
+            margin: 0 auto;
+            background: var(--bg);
+            padding: 48px 56px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid var(--border);
+        }
+
+        .header {
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 20px;
+            margin-bottom: 28px;
+        }
+
+        .header h1 {
+            color: var(--primary);
+            font-size: 23px;
+            margin: 0 0 8px 0;
+            line-height: 1.3;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .header .subtitle {
+            font-size: 14.5px;
+            color: var(--text-light);
+            margin: 0 0 16px 0;
+            font-weight: 500;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 10px;
+            background: var(--bg-alt);
+            padding: 14px 18px;
+            border-radius: 6px;
+            border-left: 4px solid var(--primary);
+            font-size: 13px;
+        }
+
+        .meta-item strong {
+            color: var(--text);
+        }
+
+        h2 {
+            color: var(--primary);
+            font-size: 18px;
+            margin-top: 32px;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 6px;
+        }
+
+        h3 {
+            color: var(--secondary);
+            font-size: 15px;
+            margin-top: 20px;
+            margin-bottom: 8px;
+        }
+
+        p,
+        li {
+            font-size: 14px;
+            color: #334155;
+            text-align: justify;
+        }
+
+        ul,
+        ol {
+            padding-left: 22px;
+            margin: 8px 0 14px 0;
+        }
+
+        li {
+            margin-bottom: 5px;
+        }
+
+        pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            overflow-x: auto;
+            line-height: 1.5;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin: 12px 0;
+        }
+
+        code {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background: #f1f5f9;
+            color: #0f172a;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 12.5px;
+        }
+
+        pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 20px 0;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 9px 12px;
+            text-align: left;
+        }
+
+        th {
+            background: #f8fafc;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background: #fafafa;
+        }
+
+        .badge-pass {
+            background: #dcfce7;
+            color: #15803d;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 11.5px;
+            display: inline-block;
+        }
+
+        .highlight-box {
+            background: #eff6ff;
+            border-left: 4px solid var(--accent);
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin: 16px 0;
+            font-size: 13.5px;
+        }
+
+        .figure-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 14px 0;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .figure-card img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            display: block;
+            margin: 0 auto 12px auto;
+        }
+
+        .figure-caption {
+            font-size: 13px;
+            color: #1e293b;
+            font-weight: 600;
+            margin-bottom: 6px;
+            text-align: left;
+        }
+
+        .figure-interpretation {
+            font-size: 12.5px;
+            color: var(--text-light);
+            text-align: justify;
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .topology-container {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 12px;
+            margin: 18px 0;
+            text-align: center;
+        }
+
+        .topology-svg {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .print-btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            cursor: pointer;
+            border: none;
+            transition: background 0.2s ease;
+        }
+
+        .print-btn:hover {
+            background: #1e40af;
+        }
+
+        @media print {
+            @page {
+                margin: 1.5cm;
+                size: A4 portrait;
+            }
+
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .report-container {
+                box-shadow: none;
+                border: none;
+                padding: 0;
+                max-width: 100%;
+            }
+
+            .print-btn {
+                display: none;
+            }
+
+            h2,
+            h3 {
+                page-break-after: avoid;
+            }
+
+            table,
+            .figure-card,
+            .topology-container,
+            pre {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="report-container">
+        <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+
+        <div class="header">
+            <h1>Technical Report: Distance Vector (DV) vs Link State (LS) Routing Protocols</h1>
+            <div class="subtitle">An Investigation of Update Overhead, Convergence Rounds, and Route Recovery Under Link
+                Failure</div>
+            <div class="meta-grid">
+                <div class="meta-item"><strong>Student Name:</strong> Prachi Modi</div>
+                <div class="meta-item"><strong>Student ID:</strong> 25CS045</div>
+                <div class="meta-item"><strong>Course:</strong> Fundamentals of Computer Networks (ITUC201)</div>
+                <div class="meta-item"><strong>Department:</strong> Department of Computer Science & Engineering</div>
+                <div class="meta-item"><strong>Institution:</strong> CSPIT, Charusat University</div>
+                <div class="meta-item"><strong>Division:</strong> 1</div>
+            </div>
+
+            <h2>1. Objectives</h2>
+            <p>In computer network architectures, routing protocols determine the optimal path that data packets take
+                from a
+                source node to a destination node across interconnected routers. The two most fundamental paradigms
+                taught
+                in routing theory are <strong>Distance Vector (DV)</strong> protocols (such as RIP, based on the
+                distributed
+                Bellman-Ford algorithm) and <strong>Link State (LS)</strong> protocols (such as OSPF and IS-IS, based on
+                Dijkstra’s Shortest Path First algorithm).</p>
+            <p>While textbook theory clearly explains the conceptual differences, it can be difficult to appreciate how
+                these differences affect simulated control-message overhead and convergence behavior during network
+                topology
+                failures without implementing and measuring the algorithms directly.</p>
+            <p>The primary objectives of this project are:</p>
+            <ul>
+                <li><strong>Develop an Educational Simulation Engine in Python:</strong> Implement synchronous,
+                    discrete-round simulation models for both Distance Vector and Link State routing algorithms from the
+                    ground up without relying on black-box routing libraries.</li>
+                <li><strong>Standardize a Common Five-Node Topology:</strong> Build a matched 5-node test network
+                    (<code>A</code>, <code>B</code>, <code>C</code>, <code>D</code>, <code>E</code>) with 7
+                    bidirectional
+                    links of varied link costs to serve as a fair, identical testing ground for both algorithms.</li>
+                <li><strong>Simulate Network Failure and Recovery:</strong> Inject a controlled link failure by removing
+                    the
+                    link between Router <code>B</code> and Router <code>D</code> (link cost = 2) and evaluate how each
+                    protocol adapts.</li>
+                <li><strong>Quantitatively Measure Update Overhead and Convergence Rounds:</strong> Record the exact
+                    number
+                    of control message transmission attempts and the number of discrete synchronous rounds required to
+                    reach
+                    a stable state across three test scenarios:
+                    <ul>
+                        <li><em>Baseline Scenario:</em> Normal, healthy network starting from cold boot.</li>
+                        <li><em>Fresh Start After Failure Scenario:</em> Network starting cold without link B–D present.
+                        </li>
+                        <li><em>Dynamic Recovery Scenario:</em> Network transitioning directly from the converged
+                            baseline
+                            state to a recovered state after link B–D is severed mid-operation.</li>
+                    </ul>
+                </li>
+                <li><strong>Implement Automated Route Verification:</strong> Automatically validate that the computed
+                    shortest-path costs and next-hop forwarding decisions match mathematical ground truth calculated
+                    independently using NetworkX's Dijkstra implementation.</li>
+                <li><strong>Analyze Engineering Trade-offs:</strong> Evaluate the trade-off between initial setup
+                    message
+                    overhead and dynamic adaptation efficiency during link failure recovery.</li>
+            </ul>
+
+            <h2>2. Methodology & Experimental Design</h2>
+
+            <h3>2.1 Theoretical Framework</h3>
+            <p><strong>Distance Vector (DV) Mechanism:</strong> Distance Vector routing relies on distributed
+                computation.
+                Each router maintains a routing table containing its current estimated distance to every possible
+                destination and the corresponding next-hop neighbor. Routers do not know the complete map of the
+                network;
+                they only know their own direct links and the distance vectors advertised by their immediate neighbors.
+                In
+                each round, every router shares its distance vector with its direct neighbors and updates its table
+                using
+                the Bellman-Ford equation:</p>
+            <pre><code>D_u(d) = min_{v ∈ Neighbors(u)} { c(u, v) + D_v(d) }</code></pre>
+
+            <p><strong>Link State (LS) Mechanism:</strong> Link State routing decouples topology dissemination from
+                shortest-path computation. Each router packages its local link connectivity into a <em>Link State
+                    Advertisement (LSA)</em>, floods this advertisement to all routers across the network, builds an
+                identical global <em>Link State Database (LSDB)</em>, and independently executes Dijkstra's Shortest
+                Path
+                First (SPF) algorithm locally to build its forwarding table.</p>
+
+            <h3>2.2 Network Topology Specification</h3>
+            <p>A 5-node topology with 7 bidirectional links (representing 14 directed links in normal operation) was
+                configured in <code>network_config.py</code>. The layout and exact link costs are illustrated below:</p>
+
+            <div class="topology-container">
+                <svg class="topology-svg" viewBox="0 0 700 360" width="100%" height="340"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#1e3a8a" />
+                            <stop offset="100%" stop-color="#2563eb" />
+                        </linearGradient>
+                        <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+                            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15" />
+                        </filter>
+                    </defs>
+
+                    <!-- Links -->
+                    <!-- Link A-B (Cost 2) -->
+                    <line x1="140" y1="70" x2="440" y2="70" stroke="#3b82f6" stroke-width="3" />
+                    <!-- Link A-C (Cost 5) -->
+                    <line x1="140" y1="70" x2="200" y2="210" stroke="#3b82f6" stroke-width="3" />
+                    <!-- Link B-C (Cost 1) -->
+                    <line x1="440" y1="70" x2="200" y2="210" stroke="#3b82f6" stroke-width="3" />
+                    <!-- Link B-D (Cost 2) [FAILED LINK] -->
+                    <line x1="440" y1="70" x2="500" y2="210" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,6" />
+                    <!-- Link C-D (Cost 3) -->
+                    <line x1="200" y1="210" x2="500" y2="210" stroke="#3b82f6" stroke-width="3" />
+                    <!-- Link C-E (Cost 1) -->
+                    <line x1="200" y1="210" x2="350" y2="300" stroke="#3b82f6" stroke-width="3" />
+                    <!-- Link D-E (Cost 2) -->
+                    <line x1="500" y1="210" x2="350" y2="300" stroke="#3b82f6" stroke-width="3" />
+
+                    <!-- Link Cost Badges -->
+                    <!-- A-B Cost 2 -->
+                    <g transform="translate(290, 60)">
+                        <rect x="-24" y="-12" width="48" height="22" rx="5" fill="#ffffff" stroke="#cbd5e1"
+                            stroke-width="1.5" />
+                        <text x="0" y="3" font-size="11" font-weight="bold" fill="#1e293b" text-anchor="middle">Cost
+                            2</text>
+                    </g>
+
+                    <!-- A-C Cost 5 -->
+                    <g transform="translate(155, 140)">
+                        <rect x="-24" y="-12" width="48" height="22" rx="5" fill="#ffffff" stroke="#cbd5e1"
+                            stroke-width="1.5" />
+                        <text x="0" y="3" font-size="11" font-weight="bold" fill="#1e293b" text-anchor="middle">Cost
+                            5</text>
+                    </g>
+
+                    <!-- B-C Cost 1 -->
+                    <g transform="translate(320, 130)">
+                        <rect x="-24" y="-12" width="48" height="22" rx="5" fill="#ffffff" stroke="#cbd5e1"
+                            stroke-width="1.5" />
+                        <text x="0" y="3" font-size="11" font-weight="bold" fill="#1e293b" text-anchor="middle">Cost
+                            1</text>
+                    </g>
+
+                    <!-- B-D Cost 2 (FAILED) -->
+                    <g transform="translate(490, 140)">
+                        <rect x="-65" y="-12" width="130" height="24" rx="5" fill="#fee2e2" stroke="#ef4444"
+                            stroke-width="1.5" />
+                        <text x="0" y="4" font-size="10.5" font-weight="bold" fill="#b91c1c" text-anchor="middle">Cost 2
+                            (FAILED in Exp 2 &amp; 3)</text>
+                    </g>
+
+                    <!-- C-D Cost 3 -->
+                    <g transform="translate(350, 200)">
+                        <rect x="-24" y="-12" width="48" height="22" rx="5" fill="#ffffff" stroke="#cbd5e1"
+                            stroke-width="1.5" />
+                        <text x="0" y="3" font-size="11" font-weight="bold" fill="#1e293b" text-anchor="middle">Cost
+                            3</text>
+                    </g>
+
+                    <!-- C-E Cost 1 -->
+                    <g transform="translate(260, 265)">
+                        <rect x="-24" y="-12" width="48" height="22" rx="5" fill="#ffffff" stroke="#cbd5e1"
+                            stroke-width="1.5" />
+                        <text x="0" y="3" font-size="11" font-weight="bold" fill="#1e293b" text-anchor="middle">Cost
+                            1</text>
+                    </g>
+
+                    <!-- D-E Cost 2 -->
+                    <g transform="translate(440, 265)">
+                        <rect x="-24" y="-12" width="48" height="22" rx="5" fill="#ffffff" stroke="#cbd5e1"
+                            stroke-width="1.5" />
+                        <text x="0" y="3" font-size="11" font-weight="bold" fill="#1e293b" text-anchor="middle">Cost
+                            2</text>
+                    </g>
+
+                    <!-- Router Nodes -->
+                    <!-- Router A -->
+                    <g transform="translate(140, 70)" filter="url(#shadow)">
+                        <circle r="26" fill="url(#nodeGrad)" stroke="#1d4ed8" stroke-width="2" />
+                        <text x="0" y="5" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle">A</text>
+                    </g>
+
+                    <!-- Router B -->
+                    <g transform="translate(440, 70)" filter="url(#shadow)">
+                        <circle r="26" fill="url(#nodeGrad)" stroke="#1d4ed8" stroke-width="2" />
+                        <text x="0" y="5" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle">B</text>
+                    </g>
+
+                    <!-- Router C -->
+                    <g transform="translate(200, 210)" filter="url(#shadow)">
+                        <circle r="26" fill="url(#nodeGrad)" stroke="#1d4ed8" stroke-width="2" />
+                        <text x="0" y="5" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle">C</text>
+                    </g>
+
+                    <!-- Router D -->
+                    <g transform="translate(500, 210)" filter="url(#shadow)">
+                        <circle r="26" fill="url(#nodeGrad)" stroke="#1d4ed8" stroke-width="2" />
+                        <text x="0" y="5" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle">D</text>
+                    </g>
+
+                    <!-- Router E -->
+                    <g transform="translate(350, 300)" filter="url(#shadow)">
+                        <circle r="26" fill="url(#nodeGrad)" stroke="#1d4ed8" stroke-width="2" />
+                        <text x="0" y="5" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle">E</text>
+                    </g>
+
+                    <!-- Legend Box -->
+                    <g transform="translate(18, 325)">
+                        <line x1="0" y1="0" x2="24" y2="0" stroke="#3b82f6" stroke-width="2.5" />
+                        <text x="30" y="4" font-size="11" fill="#475569">Active Bidirectional Link</text>
+                        <line x1="190" y1="0" x2="214" y2="0" stroke="#ef4444" stroke-width="2.5"
+                            stroke-dasharray="4,4" />
+                        <text x="220" y="4" font-size="11" fill="#b91c1c">Failed Link B–D (Cost 2)</text>
+                        <circle cx="390" cy="0" r="6" fill="#2563eb" />
+                        <text x="402" y="4" font-size="11" fill="#475569">Router Node</text>
+                    </g>
+                </svg>
+                <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
+                    <em>Network Topology Diagram: 5 routers with 7 weighted links. In failure experiments, the B–D link
+                        (cost 2) is disabled.</em>
+                </div>
+            </div>
+
+            <h3>2.3 Experimental Scenarios</h3>
+            <ol>
+                <li><strong>Baseline Scenario:</strong> All 5 nodes and 7 links are active (14 directed links).
+                    Evaluates
+                    cold-start discovery and convergence.</li>
+                <li><strong>Fresh Start After Failure:</strong> Initialized without link (B, D). 5 nodes and 6 links
+                    active
+                    (12 directed links). Cold start under degraded conditions.</li>
+                <li><strong>Dynamic Recovery Scenario:</strong> Starts directly from the converged baseline state of
+                    Experiment 1. Link (B, D) is severed mid-operation. Evaluates adaptive failure recovery without
+                    resetting routing tables.</li>
+            </ol>
+
+            <h2>3. Implementation Details</h2>
+            <p>The simulation was implemented in Python 3 across two modules: <code>network_config.py</code> (topology
+                constants) and <code>main.py</code> (simulation logic, measurements, and verification).</p>
+
+            <h3>3.1 Distance Vector Implementation</h3>
+            <p>In <code>main.py</code>, Distance Vector executes in synchronous discrete rounds:</p>
+            <ul>
+                <li><strong>Initialization:</strong> Each router initializes its distance to itself as 0, to direct
+                    neighbors as the direct link cost, and to all other nodes as infinity (<code>inf</code>).</li>
+                <li><strong>Synchronous Relaxation:</strong> In each round, routers evaluate incoming advertisements
+                    against
+                    their current distances. When a lower-cost path is discovered, distance estimates and next hops are
+                    updated, tripping the round change flag.</li>
+                <li><strong>Loop Prevention in Dynamic Recovery:</strong> When link (B, D) drops, naive Bellman-Ford
+                    could
+                    experience the count-to-infinity problem. To ensure clean convergence, <strong>Split Horizon with
+                        Poisoned Reverse</strong> was implemented in <code>run_dv_recovery</code>:
+                    <pre><code>advertised_cost = old_distances[neighbor][destination]
+if old_next_hops[neighbor][destination] == node:
+    advertised_cost = inf</code></pre>
+                    If a router routes to destination <code>dest</code> via neighbor <code>N</code>, it advertises an
+                    infinite cost back to <code>N</code>, preventing circular dependency loops.
+                </li>
+            </ul>
+
+            <h3>3.2 Link State Implementation</h3>
+            <p>Link State executes in two distinct phases:</p>
+            <ul>
+                <li><strong>Flooding Phase:</strong> Routers generate Link State Advertisements (LSAs) containing their
+                    direct neighbor costs. Flooding is managed via round-based frontier tracking. Routers forward new
+                    LSAs
+                    to all neighbors except the incoming sender
+                    (<code>if neighbour == incoming_neighbour: continue</code>).
+                    Each transmission attempt is recorded.</li>
+                <li><strong>Local SPF Computation:</strong> Once all LSAs are received and the flooding frontier is
+                    empty,
+                    each router independently executes Dijkstra's algorithm using Python's <code>heapq</code> priority
+                    queue
+                    on its local Link State Database (LSDB) to compute shortest paths and next hops.</li>
+                <li><strong>Event-Driven Recovery:</strong> In <code>run_ls_recovery</code>, only the incident routers
+                    directly connected to the severed link (Routers B and D) generate updated LSAs. Routers A, C, and E
+                    forward the modified LSAs and update their local databases without generating redundant
+                    advertisements.
+                </li>
+            </ul>
+
+            <h3>3.3 Automated Independent Validation</h3>
+            <p>To eliminate reporting errors, <code>main.py</code> implements automated validation against NetworkX's
+                <code>single_source_dijkstra_path_length</code> and next-hop consistency checks
+                (<code>validate_distances</code> and <code>validate_next_hops</code>). All six experimental
+                configurations
+                successfully passed both distance and next-hop validation.
+            </p>
+
+            <h2>4. Observations and Experimental Results</h2>
+
+            <h3>4.1 Experimental Measurements</h3>
+            <p>The simulation was executed and all measurements were logged directly to
+                <code>results/results.csv</code>:
+            </p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Experiment Scenario</th>
+                        <th>Protocol</th>
+                        <th>Rounds</th>
+                        <th>Message Count</th>
+                        <th>Metric Counted</th>
+                        <th>Validation Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>1. Baseline Network</strong></td>
+                        <td>Distance Vector (DV)</td>
+                        <td>3</td>
+                        <td>42</td>
+                        <td>DV vector advertisement attempts</td>
+                        <td><span class="badge-pass">PASS</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>1. Baseline Network</strong></td>
+                        <td>Link State (LS)</td>
+                        <td>3</td>
+                        <td>50</td>
+                        <td>LSA transmission attempts</td>
+                        <td><span class="badge-pass">PASS</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>2. Fresh Start After Failure</strong></td>
+                        <td>Distance Vector (DV)</td>
+                        <td>3</td>
+                        <td>36</td>
+                        <td>DV vector advertisement attempts</td>
+                        <td><span class="badge-pass">PASS</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>2. Fresh Start After Failure</strong></td>
+                        <td>Link State (LS)</td>
+                        <td>3</td>
+                        <td>40</td>
+                        <td>LSA transmission attempts</td>
+                        <td><span class="badge-pass">PASS</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>3. Recovery After Failure</strong></td>
+                        <td>Distance Vector (DV)</td>
+                        <td>3</td>
+                        <td>36</td>
+                        <td>DV vector advertisement attempts</td>
+                        <td><span class="badge-pass">PASS</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>3. Recovery After Failure</strong></td>
+                        <td>Link State (LS)</td>
+                        <td>3</td>
+                        <td>16</td>
+                        <td>LSA transmission attempts</td>
+                        <td><span class="badge-pass">PASS</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>4.2 Empirical Analysis and Generated Graphs</h3>
+
+            <div class="figure-card">
+                <img src="results/graphs/message_overhead.png"
+                    onerror="this.src='../assets/results/message_overhead.png'"
+                    alt="Figure 1: Comparison of Message Overhead between DV and LS">
+                <div class="figure-caption">Figure 1: Control message transmission attempts for Distance Vector and Link
+                    State across all three experimental scenarios.</div>
+                <p class="figure-interpretation">
+                    <strong>Interpretation:</strong> In the baseline startup experiment, Distance Vector recorded 42
+                    message
+                    advertisement attempts while Link State recorded 50 LSA transmission attempts. The higher baseline
+                    overhead in Link State is caused by flooding duplication across mesh paths. In the dynamic recovery
+                    experiment, however, Link State required only <strong>16 message transmission attempts</strong>
+                    compared
+                    to <strong>36 for Distance Vector</strong> (a 55.6% reduction). Because LS updates are event-driven,
+                    only the affected nodes (B and D) generated changed LSAs, whereas DV required full periodic vector
+                    exchanges across all 12 directed links over 3 rounds to achieve and confirm stability.
+                </p>
+            </div>
+
+            <div class="figure-card">
+                <img src="results/graphs/convergence_rounds.png"
+                    onerror="this.src='../assets/results/convergence_rounds.png'"
+                    alt="Figure 2: Comparison of Convergence Rounds between DV and LS">
+                <div class="figure-caption">Figure 2: Discrete synchronous convergence rounds required by Distance
+                    Vector
+                    and Link State across all three experimental scenarios.</div>
+                <p class="figure-interpretation">
+                    <strong>Interpretation:</strong> Both algorithms required exactly 3 synchronous rounds across all
+                    three
+                    scenarios. In DV, two rounds were necessary for distance updates to propagate across the network
+                    diameter, followed by one confirmation round with zero updates. In LS, three rounds were required
+                    for
+                    the LSA flooding wave to reach the empty frontier condition across the 5-node topology.
+                </p>
+            </div>
+
+            <h3>4.3 Verification of Technical Claims and Metric Definitions</h3>
+            <ul>
+                <li><strong>Message Counts Represent Transmission Attempts, Not Bandwidth:</strong> The reported message
+                    counts measure algorithm-specific control packet transmission attempts over directed links. They do
+                    not
+                    represent total byte volume or raw network bandwidth consumption. A Distance Vector advertisement
+                    contains the router's entire routing table (multiple destination-distance pairs), whereas an
+                    individual
+                    LSA contains only local adjacency information.</li>
+                <li><strong>Round Counts Are Implementation-Specific:</strong> Although both protocols report 3 rounds,
+                    they
+                    employ fundamentally different stopping conventions. DV rounds involve distributed message passing
+                    and
+                    table relaxation until a full round yields zero cost changes. LS rounds track the synchronous
+                    flooding
+                    wave until the frontier is exhausted, after which Dijkstra SPF is computed locally in memory.
+                    Consequently, identical round counts in this synchronous model do not prove identical real-world
+                    convergence speed or wall-clock elapsed time.</li>
+                <li><strong>Rerouting Path Behavior:</strong> Prior to failure, Router B reached Router D directly via
+                    link
+                    (B, D) at cost 2. Following the failure, traffic rerouted via Router C:
+                    <pre><code>Path: B -> C -> D (Cost = 1 + 3 = 4)  or  Path: B -> C -> E -> D (Cost = 1 + 1 + 2 = 4)</code></pre>
+                    Both implementations updated to cost 4 with next hop C, passing all NetworkX verification checks.
+                </li>
+                <li><strong>Loop Freedom Scope:</strong> In our simulation, synchronous lockstep execution and Split
+                    Horizon
+                    with Poisoned Reverse prevented transient routing loops in DV. In real-world asynchronous networks,
+                    temporary loops can still occur during topology transitions in both protocol families before all
+                    databases or tables synchronize.</li>
+            </ul>
+
+            <h2>5. Conclusions & Key Takeaways</h2>
+            <p>This investigation empirically demonstrates the operational trade-offs between Distance Vector and Link
+                State
+                routing algorithms:</p>
+            <ol>
+                <li><strong>Initial Setup vs. Failure Adaptation:</strong> Distance Vector has low implementation
+                    complexity
+                    and relatively low message overhead during cold discovery in small networks. In the tested recovery
+                    scenario, Link State recorded 16 transmission attempts compared with 36 for Distance Vector, a 55.6%
+                    reduction in the measured message count. This result reflects the update mechanisms and counting
+                    rules
+                    implemented in this simulation; it does not establish universal superiority of Link State routing
+                    across
+                    all networks or failure conditions.</li>
+                <li><strong>Information Scope:</strong> Distance Vector operates on neighbor advertisements ("routing by
+                    rumor"), requiring protective mechanisms such as Split Horizon with Poisoned Reverse to avoid
+                    transient
+                    counting-to-infinity. Link State provides each router with an identical, complete map of the
+                    topology,
+                    allowing independent deterministic route calculation via Dijkstra's algorithm.</li>
+                <li><strong>Model Limitations:</strong> The simulation operates in synchronous discrete rounds on a
+                    five-node teaching topology. Production implementations (such as RIP and OSPF) operate
+                    asynchronously
+                    and incorporate protocol timers, keepalive hellos, designated routers, and area hierarchies, which
+                    influence real-world scalability and convergence timing.</li>
+            </ol>
+
+            <h2>6. Simulation Reproduction Guide</h2>
+            <p>To reproduce the simulation and generate the results CSV independently, follow the instructions below:
+            </p>
+
+            <h3>6.1 Required Files & Dependencies</h3>
+            <p>The simulation relies on two source files that must reside in the same working directory:</p>
+            <ul>
+                <li><code>main.py</code>: The simulation entry point (contains DV, LS, flooding logic, recovery, and
+                    validation).</li>
+                <li><code>network_config.py</code>: Required dependency containing <code>NODES</code>,
+                    <code>LINKS</code>,
+                    and <code>LINK_CHANGE</code>. (<code>main.py</code> imports these directly and cannot run without
+                    this
+                    file).</li>
+            </ul>
+
+            <h3>6.2 Environment Setup & Execution</h3>
+            <p>The code requires Python 3.10+ and the <code>networkx</code> library. For generating the graphs,
+                <code>matplotlib</code> library is required. Note that <code>main.py</code> writes
+                its output to <code>results/results.csv</code>, so the <code>results</code> subdirectory must be created
+                before execution:
+            </p>
+
+            <pre><code># 1. Download main.py and network_config.py into your project directory
+# 2. Install the required dependencies  
+pip install -r requirements.txt
+
+# 3. Create the required output directory (mandatory for CSV output)
+mkdir results
+
+# 4. Run the simulation
+python main.py</code></pre>
+
+            <h3>6.3 Output Verification</h3>
+            <p>Upon execution, the terminal will print round-by-round progress, routing table dumps, and validation logs
+                ending with:</p>
+            <pre><code>Validation summary:
+Baseline | DV | Distances: PASS | Next hops: PASS
+Baseline | LS | Distances: PASS | Next hops: PASS
+Fresh start after failure | DV | Distances: PASS | Next hops: PASS
+Fresh start after failure | LS | Distances: PASS | Next hops: PASS
+Recovery after failure | DV | Distances: PASS | Next hops: PASS
+Recovery after failure | LS | Distances: PASS | Next hops: PASS
+
+Overall validation: PASS
+Results saved to results/results.csv</code></pre>
+            <p>The generated <code>results/results.csv</code> will contain the exact empirical metrics recorded in this
+                report.</p>
+        </div>
+
+</body>
+
+</html>
